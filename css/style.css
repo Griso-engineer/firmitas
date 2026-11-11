@@ -12,10 +12,10 @@
   --faint: #b9b8b3;
   --line: #e4e3df;
   --rule: #111110;
-  --c-coral: #fe7c2b;
+  --c-coral: #8b9d99;  /* accent Firmitas */
   --c-red: #fa554f;  /* rouge sémantique : échecs, erreurs, négatif */
-  --c-sun: #ffca7d;
-  --c-orange: #ff6600;
+  --c-sun: #d3dcda;
+  --c-orange: #5e706c;
   --c-blue: #3788ff;
   --ok: #1f7a4d;
   --ok-bg: #dff1e6;
@@ -151,7 +151,7 @@ table.tbl th, table.tbl td { padding: 6px 8px; border-bottom: 1px solid var(--li
 table.tbl th { font-size: 12px; font-weight: 700; border-bottom-color: var(--rule); white-space: nowrap; }
 table.tbl td.num, table.tbl th.num { text-align: right; white-space: nowrap; }
 table.tbl tr:hover td { background: var(--paper-2); }
-table.tbl tr.gov td { background: #fff4e3; }
+table.tbl tr.gov td { background: #eef2f1; }
 table.tbl td.f { color: var(--muted); font-size: 12px; }
 table.tbl.compact th, table.tbl.compact td { padding: 4px 6px; }
 
@@ -317,7 +317,7 @@ details.fold > summary::-webkit-details-marker { display: none; }
 .diag { width: 100%; height: auto; display: block; }
 .diag text { font: 600 10.5px var(--font); fill: var(--ink); }
 .diag .ax { stroke: var(--ink); stroke-width: 1; }
-.diag .m { fill: rgba(254, 124, 43, .18); stroke: var(--c-coral); stroke-width: 1.4; }
+.diag .m { fill: rgba(139, 157, 153, .25); stroke: var(--c-coral); stroke-width: 1.4; }
 .diag .v { fill: rgba(55, 136, 255, .14); stroke: var(--c-blue); stroke-width: 1.2; }
 .diag .w { fill: none; stroke: var(--ink); stroke-width: 1.2; stroke-dasharray: 4 3; }
 .cls-badge { display: inline-block; font-weight: 900; font-size: 13px; padding: 1px 8px; background: var(--ink); color: var(--paper); }
