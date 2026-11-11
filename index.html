@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Firmitas · Tracés</title>
+  <meta name="description" content="Outil Tracés de vérification des poutres et barres en acier selon NF EN 1993-1-1 et son annexe nationale : classification, résistance des sections, flambement, déversement, flexion composée, flèches, fréquence propre, fiche pour note de calcul.">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23FE7C2B'/%3E%3Cpath d='M8 7h16M8 25h16M16 7v18' stroke='%23fff' stroke-width='3.4' fill='none'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="rail" aria-hidden="true">
+    <span>Firmitas — vérification des éléments acier</span>
+    <b>tracés</b>
+    <span>NF EN 1993-1-1 · AN</span>
+  </div>
+
+  <header class="top">
+    <a class="logo" href="#/verification" aria-label="Firmitas, accueil">firmitas<i>.</i></a>
+    <div class="top-meta" id="topMeta"></div>
+  </header>
+
+  <nav class="tool-tabs" id="nav" aria-label="Onglets">
+    <a href="#/verification" data-route="verification">Vérification</a>
+    <a href="#/projets" data-route="projets">Projets</a>
+    <a href="#/sections" data-route="sections" class="minor">Sections</a>
+    <a href="#/detail" data-route="detail" class="minor">Détail</a>
+    <a href="#/methode" data-route="methode" class="minor">Méthode</a>
+  </nav>
+
+  <main id="app"></main>
+
+  <footer class="foot">
+    <div class="foot-top">
+      <div class="foot-logo">tracés</div>
+      <address class="foot-contact">
+        <b>Contact</b>
+        <a href="mailto:l.grisoni@traces.design">l.grisoni@traces.design</a>
+        <span>18 rue Raymond Aron, 75013 Paris</span>
+      </address>
+    </div>
+    <div class="foot-cols">
+      <div><b>Firmitas</b><span>Vérification des poutres et barres en acier : profilés en I, PRS, tubes rectangulaires et ronds</span></div>
+      <div><b>Référentiel</b><span>NF EN 1990 et NF EN 1993-1-1 avec leurs annexes nationales françaises ; aciers NF EN 10025 ; tubes NF EN 10210-2 / 10219-2.</span></div>
+      <div><b>Avertissement</b><span>Outil d'aide au calcul : les hypothèses et résultats restent à vérifier par l'ingénieur qui signe la note.</span></div>
+    </div>
+  </footer>
+
+  <script src="js/sections.js"></script>
+  <script src="js/geom.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/ec3.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/report.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

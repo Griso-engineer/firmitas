@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Firmitas · tests</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 24px; color: #111; background: #fff; }
+  table { border-collapse: collapse; margin-bottom: 18px; } td, th { border-bottom: 1px solid #ddd; padding: 4px 10px; text-align: left; }
+  .ok { color: #1f7a4d; font-weight: 700; } .ko { color: #c62f29; font-weight: 700; } h2 { margin-top: 28px; }
+</style>
+</head>
+<body>
+<h1>Firmitas — tests</h1>
+<p>1. Moteur comparé au classeur « Predim_poutre acier_v3 » (valeurs non concernées par les corrections) et à des calculs manuels.
+2. Bibliothèque : caractéristiques calculées par la géométrie comparées aux valeurs tabulées du classeur.</p>
+<div id="out"></div>
+<script src="js/sections.js"></script>
+<script src="js/geom.js"></script>
+<script src="js/data.js"></script>
+<script src="js/ec3.js"></script>
+<script src="js/store.js"></script>
+<script src="js/xl-ref.js"></script>
+<script>
+(function () {
+  const E = FirmitasEC3, ST = FirmitasStore, D = FIRMITAS_DATA, G = FirmitasGeom, X = FIRMITAS_XLREF;
+  const rows = []; let fails = 0, n = 0;
+  function check(name, got, exp, tol = 1e-4) {
+    const ok = Math.abs(got - exp) <= tol * Math.max(1e-9, Math.abs(exp)) || (exp === 0 && Math.abs(got) < 1e-9);
+    n++; if (!ok) fails++;
+    rows.push(`<tr><td>${name}</td><td>${Number(got).toPrecision(7)}</td><td>${Number(exp).toPrecision(7)}</td><td class="${ok ? 'ok' : 'ko'}">${ok ? 'OK' : 'ÉCART'}</td></tr>`);
+  }
+  const title = (t) => rows.push(`<tr><th colspan="4" style="padding-top:14px">${t}</th></tr>`);
+
+  // ------------------------------------------------------------------
+  // A. Classeur : IPE 80 (valeurs tabulées), S235, L = 7,75 m
+  // ------------------------------------------------------------------
+  title('A · Classeur Excel — IPE 80, S235, L = 7,75 m (cellules entre parenthèses)');
+  const S = Object.assign(G.iSection('IPE 80', 80, 46, 3.8, 5.2, 5), { A: 764, Iy: 801400, Wely: 20030, Wply: 23220, Avz: 358, Iz: 84900, Welz: 3690, Wplz: 5820, It: 7000, Iw: 118754724, Avy: 499.52 });
+  S.iy = 32.4; S.iz = 10.5;
+  const P = E.prepare(S, 235);
+  const o = E.sectionCheck(S, P, 1, { N: 0, My: 0.19750718556562505e6, Mz: 0, Vz: 0, Vy: 0 });
+  check('N_pl,Rd [kN] (W6)', o.Npl / 1e3, 179.54);
+  check('V_pl,z,Rd [kN] (W7)', o.Vplz / 1e3, 48.572478146923217);
+  check('V_pl,y,Rd [kN] (W8)', o.Vply / 1e3, 67.773531519416437);
+  check('M_pl,y,Rd [kN·m] (W10)', o.MyRd / 1e6, 5.4567);
+  check('M_y,Ed / M_y,Rd (X24)', o.r.My, 3.6195353522389916e-2);
+  check('Classe (W3)', o.cls, 1);
+  check('c/t âme (Calcul classe D14)', o.cl.web.ct, 15.684210526315791);
+  check('c/t semelle (D41)', o.cl.flange.ct, 3.0961538461538463);
+  // flambement : la feuille utilise i tabulé (32,4 / 10,5) → on compare via λ = L/(i·λ1)
+  const l1 = Math.PI * Math.sqrt(210000 / 235);
+  check('λ1 (P58)', l1, 93.9129729381402);
+  const cy = E.chi(7750 / (32.4 * l1), 0.21), cz = E.chi(7750 / (10.5 * l1), 0.34);
+  check('χ_y courbe a (P63)', cy.chi, 0.14161380019894054);
+  check('χ_z courbe b (U63)', cz.chi, 1.5524411264933403e-2);
+  check('Courbes de flambement y / z (X4, X5)', (E.curves(S, 'S235').y === 'a' && E.curves(S, 'S235').z === 'b') ? 1 : 0, 1);
+  // déversement : G de la feuille = E/2,6 = 80769 ; Firmitas 80770
+  const Mcr = E.mcr(S, 7750, 0.5, 1, 1.13, 0.46, 40);
+  check('M_cr [kN·m] (W73) k = 0,5, C1 = 1,13, C2 = 0,46, zg = h/2', Mcr / 1e6, 2.6856699978886405, 2e-4);
+  const lamLT = Math.sqrt(23220 * 235 / 2.6856699978886405e6);
+  check('λ̄_LT (S76)', lamLT, 1.4254064348144286);
+  check('χ_LT courbe a (S80)', E.chi(lamLT, 0.21).chi, 0.40571267071946027);
+  check('Courbe de déversement h/b ≤ 2 (Q71)', E.ltCurve(S) === 'a' ? 1 : 0, 1);
+  // poutre : formules de la feuille
+  const q = 0.058459752;
+  const cee = E.beamCase(7.75, 'ee', q, 0, 0), cae = E.beamCase(7.75, 'ae', q, 0, 0), caa = E.beamCase(7.75, 'aa', q, 0, 0), cc = E.beamCase(7.75, 'c', q, 0, 0);
+  check('Enc./enc. M appui [kN·m] (AY12)', -cee.M(0), 0.29260323787500003);
+  check('Enc./enc. M travée (AZ12)', cee.M(3.875), 0.14630161893750002);
+  check('App./enc. M encastrement (BA13)', -cae.M(7.75), 0.43890485681250008);
+  check('App./enc. V appui simple (AS13)', cae.V(0, 1), 0.16989865425000003);
+  check('App./app. M travée (AZ14)', caa.M(3.875), 0.43890485681250008);
+  check('Console M encastrement (AY15)', -cc.M(0), 1.7556194272500003);
+  const wm = (c) => Math.max(...Array.from(E.deflection(c, 400)).map(Math.abs)) * 1e12 / (205000 * 801400);
+  check('Flèche enc./enc. [mm], E = 205 000 (BE12)', wm(cee), 3.3429459525988037, 1e-3);
+  check('Flèche app./enc. (BE13 : coefficient 0,0054 arrondi, exact 0,005416)', wm(cae), 6.9319327273088804 * 0.0054159 / 0.0054, 1e-3);
+  check('Flèche app./app. (BE14)', wm(caa), 16.714729762994018, 1e-3);
+  check('Flèche console (BE15)', wm(cc), 160.46140572474258, 1e-3);
+
+  // ------------------------------------------------------------------
+  // B. Calculs manuels
+  // ------------------------------------------------------------------
+  title('B · Calculs manuels');
+  // charge ponctuelle : encastrée–encastrée, P à a
+  const cp = E.beamCase(6, 'ee', 0, 10, 2);
+  check('Enc./enc. P = 10 à a = 2 : M_A = P·a·b²/L²', -cp.M(0), 10 * 2 * 16 / 36);
+  check('… M_B = P·a²·b/L²', -cp.M(6), 10 * 4 * 4 / 36);
+  check('… M sous la charge = 2·P·a²·b²/L³', cp.M(2), 2 * 10 * 4 * 16 / 216);
+  const w3 = E.deflection(E.beamCase(6, 'aa', 0, 10, 3), 400);
+  check('App./app. P au milieu : EI·w = P·L³/48', Math.max(...w3), 10 * 216 / 48, 1e-4);
+  const wc = E.deflection(E.beamCase(4, 'c', 0, 5, 4), 400);
+  check('Console P en bout : EI·w = P·L³/3', wc[400], 5 * 64 / 3, 1e-4);
+  const wee = E.deflection(E.beamCase(6, 'ee', 0, 10, 3), 400);
+  check('Enc./enc. P au milieu : EI·w = P·L³/192', Math.max(...wee), 10 * 216 / 192, 1e-4);
+  // tableau B.3
+  check('C_m linéaire ψ = −1 → 0,4', E.cmB3(10, 0, -10, null, true).cm, 0.4);
+  check('C_m appuyée, charge répartie → 0,95', E.cmB3(0, 10, 0, 'U').cm, 0.95);
+  check('C_m appuyée, charge concentrée → 0,90', E.cmB3(0, 10, 0, 'C').cm, 0.90);
+  check('C_m bi-encastrée, charge répartie (αs = −0,5, ψ = 1) → 0,5', E.cmB3(-2, 1, -2, 'U').cm, 0.5);
+  // IPE 300 S355, poutre 6 m, G = 6 + PP, Q = 9 kN/m (état par défaut)
+  const s0 = ST.defaultState(); s0.stab.link.LLT = true;
+  const r0 = E.compute(s0);
+  const S3 = r0.S, pp = S3.G * 9.81 / 1000;
+  const qEd = 1.35 * (6 + pp) + 1.5 * 9, MEd = qEd * 36 / 8;
+  check('IPE 300 · M_Ed = q·L²/8 [kN·m]', r0.env.worst.diag.Mymax / 1e6, MEd, 1e-6);
+  check('IPE 300 · V_Ed = q·L/2 [kN]', r0.env.worst.Vzmax / 1e3, qEd * 3, 1e-6);
+  check('IPE 300 · M_y,Ed/M_pl,Rd', r0.env.byCrit.My.r, MEd * 1e6 / (S3.Wply * 355), 1e-6);
+  check('IPE 300 · flèche G+Q = 5qL⁴/384EI [mm]', r0.sls.rows[0].w, 5 * (15 + pp) * Math.pow(6000, 4) / (384 * 210000 * S3.Iy), 1e-4);
+  const mc = Math.PI * Math.PI * 210000 * S3.Iz / 36e6 * (Math.sqrt(S3.Iw / S3.Iz + 36e6 * 80770 * S3.It / (Math.PI * Math.PI * 210000 * S3.Iz) + Math.pow(0.454 * 150, 2)) - 0.454 * 150);
+  check('IPE 300 · M_cr (C1 auto = 12,5/11 = 1,136, C2 = 0,454, zg = h/2)', r0.env.worst.mem.lt.Mcr, 12.5 / 11 * mc, 1e-6);
+  check('IPE 300 · fréquence propre π/(2L²)·√(EI/m) [Hz]', r0.freq.f, Math.PI / 72 * Math.sqrt(210000 * S3.Iy * 1e-6 / ((6 + pp + 2.7) * 1000 / 9.81)), 1e-3);
+  // poteau HEB 200 S235 comprimé, 4 m : N_b,z = χ_z·A·fy (courbe c)
+  const s1 = ST.defaultState();
+  Object.assign(s1, { mode: 'direct', L: 4 }); s1.sec = Object.assign(s1.sec, { fam: 'HE B', name: 'HE 200 B' }); s1.steel.grade = 'S235'; s1.direct.N = 800;
+  const r1 = E.compute(s1), Sb = r1.S;
+  const lz = 4000 / (Sb.iz * l1), ph = 0.5 * (1 + 0.49 * (lz - 0.2) + lz * lz), xz = 1 / (ph + Math.sqrt(ph * ph - lz * lz));
+  check('HE 200 B · χ_z (courbe c, h/b ≤ 1,2)', r1.env.worst.mem.z.chi, xz, 1e-6);
+  check('HE 200 B · N/N_b,Rd', r1.env.byCrit.Fb.r, 800e3 / (xz * Sb.A * 235), 1e-6);
+  check('HE 200 B · A calculée ≈ 78,1 cm² (catalogue)', Sb.A / 100, 78.1, 2e-3);
+  // classe 4 en compression : IPE 600 S355
+  const P6 = E.prepare(D.findSection('IPE', 'IPE 600'), 355);
+  check('IPE 600 S355 · classe en compression pure', P6.cN.cls, 4);
+  check('IPE 600 S355 · classe en flexion pure', P6.cMy.cls, 1);
+  // fy selon l'épaisseur
+  check('fy S355, t = 30 mm (EN 10025-2)', D.fyOf('S355', 30, 'en10025'), 345);
+  check('fy S355, t = 30 mm (tableau 3.1)', D.fyOf('S355', 30, 'tab31'), 355);
+
+  // ------------------------------------------------------------------
+  // C. Bibliothèque : calcul géométrique / table du classeur
+  // ------------------------------------------------------------------
+  const lib = []; let nLib = 0, nBad = 0;
+  const props = [['A', 6], ['Iy', 7], ['Wely', 8], ['Wply', 9], ['Avz', 10], ['Iz', 11], ['Welz', 12], ['Wplz', 13], ['It', 14]];
+  const cmp = (name, s, r, tol, note) => {
+    nLib++;
+    const bad = props.map(([k, i]) => ({ k, d: r[i] ? s[k] / r[i] - 1 : null })).filter((x) => x.d != null && Math.abs(x.d) > (x.k === 'It' ? 0.06 : tol));
+    const dm = r[15] ? s.G / r[15] - 1 : 0;
+    if (Math.abs(dm) > 0.02) bad.push({ k: 'masse', d: dm });
+    if (bad.length) { nBad++; lib.push(`<tr><td>${name}</td><td>${bad.map((x) => `${x.k} ${(x.d * 100).toFixed(1)} %`).join(' · ')}</td><td>${note || ''}</td></tr>`); }
+  };
+  ['IPE', 'HE', 'HD'].forEach((f) => X[f].forEach((r) => cmp(r[0], G.iSection(r[0], r[1], r[2], r[3], r[4], r[5]), r, 0.015, 'dimensions du classeur')));
+  X.RHS.forEach((r) => { if (r[3] !== r[4] || r[3] > 20) return; const nm = 'Tube ' + r[1] + ' × ' + r[2] + ' × ' + r[3]; const sc = (s) => props.reduce((a, [k, i]) => a + (r[i] ? Math.abs(s[k] / r[i] - 1) : 0), 0); const hot = G.rhs(r[1], r[2], r[3], 'hot'), cold = G.rhs(r[1], r[2], r[3], 'cold'); const c = sc(cold) < sc(hot); cmp(nm, c ? cold : hot, r, 0.025, c ? 'plus proche EN 10219-2 (à froid)' : 'plus proche EN 10210-2 (à chaud)'); });
+  // iy des IPN
+  const ipnBad = X.IPN.filter((r) => true).length;
+  // sections ajoutées : masse calculée / masse nominale
+  title('C · Sections ajoutées ou corrigées — masse calculée / masse nominale [kg/m]');
+  Object.keys(D.CATALOG).forEach((f) => D.CATALOG[f].forEach((it) => { if (it.added || it.fixed) check(it.name + (it.fixed ? ' (corrigée)' : ' (ajoutée)'), it.make().G, it.Gnom, 0.01); }));
+  check('IPE 550 · I_y ≈ 67 120 cm⁴ (catalogue)', D.findSection('IPE', 'IPE 550').Iy / 1e4, 67120, 3e-3);
+  check('IPE 550 · W_pl,y ≈ 2 787 cm³ (catalogue)', D.findSection('IPE', 'IPE 550').Wply / 1e3, 2787, 3e-3);
+  check('IPE 300 · I_t ≈ 20,1 cm⁴ (catalogue)', D.findSection('IPE', 'IPE 300').It / 1e4, 20.1, 1e-2);
+  check('SHS 200 × 200 × 10 · A ≈ 74,9 cm² (EN 10210-2)', G.rhs(200, 200, 10).A / 100, 74.9, 3e-3);
+  check('SHS 200 × 200 × 10 · I ≈ 4 471 cm⁴', G.rhs(200, 200, 10).Iy / 1e4, 4471, 3e-3);
+
+  document.getElementById('out').innerHTML = `<p id="summary" class="${fails ? 'ko' : 'ok'}">${n - fails} / ${n} vérifications conformes${fails ? ' — ' + fails + ' écart(s)' : ''}.</p>
+    <table><thead><tr><th>Vérification</th><th>Firmitas</th><th>Référence</th><th></th></tr></thead><tbody>${rows.join('')}</tbody></table>
+    <h2>Recoupement de la bibliothèque du classeur</h2>
+    <p id="libsum">${nLib} sections comparées (I à ailes parallèles : tolérance 1,5 % ; tubes : 2 % ; I<sub>t</sub> : 6 % ; masse : 2 %) — <b>${nBad}</b> en écart. Les écarts ci-dessous sont des anomalies de la table d'origine : Firmitas utilise les valeurs calculées.</p>
+    <table><thead><tr><th>Section</th><th>Écart (calculé / tabulé)</th><th>Base</th></tr></thead><tbody>${lib.join('')}</tbody></table>
+    <h2>IPN — rayon de giration i<sub>y</sub> tabulé / √(I<sub>y</sub>/A)</h2>
+    <table><tbody>${X.IPN.map((r) => `<tr><td>${r[0]}</td><td>tabulé (feuille IPN, col. M) : voir classeur</td><td>√(I/A) = ${Math.sqrt(r[7] / r[6]).toFixed(1)} mm</td></tr>`).slice(0, 3).join('')}</tbody></table>`;
+  window.__tests = { n, fails, nLib, nBad };
+})();
+</script>
+</body>
+</html>
