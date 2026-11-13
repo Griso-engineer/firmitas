@@ -92,6 +92,13 @@
         s += dimH(Y(-G.Rb), Y(G.Rb), Z(P.zb) + 18, `Ø boulons = ${fmtG(2 * G.Rb, 1)}`, { ext: Z(0) });
         s += dimH(Y(P.yl), Y(P.yr), Z(P.zb) + 38, `Ø platine = ${fmtG(G.Dp, 1)}`, { ext: Z(0) });
         s += T(Y(P.yr) + 8, Z(0) - 4, sb(`m = ${fmtG(G.m, 0)} ; e = ${fmtG(G.e, 0)}`), { fs: 8.5, col: DIM });
+      } else if (G.sides === 'lr') {
+        const yb = Z(P.zb) + 18;
+        s += dimH(Y(S.b / 2), Y(S.b / 2 + G.m), yb, `m = ${fmtG(G.m, 1)}`, { ext: Z(-S.h / 2) });
+        s += dimH(Y(S.b / 2 + G.m), Y(P.yr), yb + 20, `e = ${fmtG(G.e, 1)}`, { ext: Z(P.zb) });
+        s += dimH(Y(-S.b / 2), Y(S.b / 2), yb, `b = ${fmtG(S.b, 1)}`, { ext: Z(-S.h / 2) });
+        s += dimH(Y(P.yl), Y(P.yr), yb + 40, `b_p = ${fmtG(G.bp, 1)}`, { ext: Z(P.zb) });
+        s += dimV(Z(P.zt), Z(P.zb), Y(P.yr) + 14, `h_p = ${fmtG(G.hp, 1)}`, { ext: Y(P.yr) });
       } else {
         const xr = Y(P.yr) + 14;
         s += dimV(Z(P.zt), Z(S.h / 2 + G.m), xr, `e = ${fmtG(G.e, 1)}`, { ext: Y(P.yr) });
@@ -177,9 +184,9 @@
         ${field('Pince w', inp('Ilay.w'), 'mm', 'Entraxe horizontal des 2 boulons d\'une rangée')}${field('Largeur b<sub>p</sub>', inp('Ilay.bp'), 'mm')}
         ${field('Débord sans rangée', inp('Ilay.over'), 'mm', 'Platine au-delà de la semelle')}
       </div>` : `<div class="fields">
-        ${st.shape === 'rhs' ? field('Boulons sur', sel('Tlay.sides', [[4, '4 faces'], [2, '2 faces (haut et bas)']], { rr: true })) + field('Boulons par face', inp('Tlay.nSide')) : field('Nombre de boulons', inp('Tlay.nChs'))}
+        ${st.shape === 'rhs' ? field('Boulons sur', sel('Tlay.sides', [[4, '4 faces'], [2, "2 faces (haut et bas)"], ["lr", "2 faces (gauche et droite)"]], { rr: true })) + field('Boulons par face', inp('Tlay.nSide')) : field('Nombre de boulons', inp('Tlay.nChs'))}
         ${field('m', inp('Tlay.m'), 'mm', 'Face extérieure du tube → axe des boulons')}${field('e', inp('Tlay.e'), 'mm', 'Axe des boulons → bord de platine')}
-        ${st.shape === 'rhs' && +st.Tlay.sides === 2 ? field('Débord latéral', inp('Tlay.over'), 'mm') : ''}
+        ${st.shape === 'rhs' && (+st.Tlay.sides === 2 || st.Tlay.sides === "lr") ? field(st.Tlay.sides === "lr" ? "Débord haut et bas" : "Débord latéral", inp("Tlay.over"), "mm") : ''}
       </div>`;
     app.innerHTML = `<div class="page">
       <div class="actionbar">
@@ -348,7 +355,7 @@
       if (e.type === 'input' && (t.tagName === 'SELECT' || t.type === 'checkbox')) return;
       const p = t.dataset.ep;
       let v = t.type === 'checkbox' ? t.checked : t.value;
-      if (p === 'bolt.d' || p === 'Tlay.sides') v = +v;
+      if (p === "bolt.d" || (p === "Tlay.sides" && v !== "lr")) v = +v;
       set(p, v);
       if (p === 'sec.fam') { const l = D.CATALOG[v] || []; st.sec.name = l.length ? l[Math.floor(l.length / 2)].name : ''; }
       if (p === 'tube.fam') { const l = D.CATALOG[v] || []; st.tube.name = l.length ? l[Math.floor(l.length / 3)].name : ''; }

@@ -136,15 +136,15 @@
       for (let k = 0; k < n; k++) { const a = PI / 2 + PI / n + 2 * PI * k / n; bolts.push({ y: Rb * Math.cos(a), z: Rb * Math.sin(a), trib: 2 * PI * Rt / n, tribW: 2 * PI * Rw / n }); }
       return { bolts, m, e, Rb, Dp: 2 * (Rb + e), round: true, n };
     }
-    const ns = Math.max(1, Math.round(num(L.nSide, 2))), sides = num(L.sides) === 2 ? 2 : 4;
+    const ns = Math.max(1, Math.round(num(L.nSide, 2))), sides = String(L.sides) === "lr" ? "lr" : num(L.sides) === 2 ? 2 : 4;
     const put = (len, n) => { const ps = len / n; const a = []; for (let k = 0; k < n; k++) a.push((k - (n - 1) / 2) * ps); return { a, ps }; };
     const tb = put(S.b, ns);
-    tb.a.forEach((y) => { bolts.push({ y, z: S.h / 2 + m, trib: tb.ps, face: 'top' }); bolts.push({ y, z: -S.h / 2 - m, trib: tb.ps, face: 'bot' }); });
-    if (sides === 4) {
+    if (sides !== "lr") tb.a.forEach((y) => { bolts.push({ y, z: S.h / 2 + m, trib: tb.ps, face: 'top' }); bolts.push({ y, z: -S.h / 2 - m, trib: tb.ps, face: 'bot' }); });
+    if (sides !== 2) {
       const lr = put(S.h, ns);
       lr.a.forEach((z) => { bolts.push({ y: S.b / 2 + m, z, trib: lr.ps, face: 'right' }); bolts.push({ y: -S.b / 2 - m, z, trib: lr.ps, face: 'left' }); });
     }
-    const bp = sides === 4 ? S.b + 2 * (m + e) : S.b + 2 * over, hp = S.h + 2 * (m + e);
+    const bp = sides === 2 ? S.b + 2 * over : S.b + 2 * (m + e), hp = sides === "lr" ? S.h + 2 * over : S.h + 2 * (m + e);
     return { bolts, m, e, bp, hp, sides, ns, round: false };
   }
 
