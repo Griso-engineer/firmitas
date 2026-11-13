@@ -21,6 +21,7 @@
 <script src="js/ec3.js"></script>
 <script src="js/store.js"></script>
 <script src="js/xl-ref.js"></script>
+<script src="js/eclisse-calc.js"></script>
 <script>
 (function () {
   const E = FirmitasEC3, ST = FirmitasStore, D = FIRMITAS_DATA, G = FirmitasGeom, X = FIRMITAS_XLREF;
@@ -128,6 +129,47 @@
   // ------------------------------------------------------------------
   // C. Bibliothèque : calcul géométrique / table du classeur
   // ------------------------------------------------------------------
+  // ------------------------------------------------------------------
+  // D. Éclisse — calculs manuels (NF EN 1993-1-8)
+  // ------------------------------------------------------------------
+  title('D · Éclisse boulonnée — calculs manuels');
+  const SC = FirmitasSpliceCalc;
+  const e0 = () => { const s = SC.defaultState(); Object.keys(s.load).forEach((k) => { s.load[k] = 0; }); return s; };
+  // résistances unitaires
+  let es = e0(); es.load.Vz = 100; let er = SC.compute(es);
+  check('F_v,Rd M20 8.8, filetage dans le plan = 0,6·800·245/1,25 [kN]', er.bolt.FvPlane / 1e3, 0.6 * 800 * 245 / 1.25 / 1e3);
+  es.bolt.threads = false; er = SC.compute(es);
+  check('F_v,Rd M20 8.8, partie lisse = 0,6·800·π·20²/4/1,25 [kN]', er.bolt.FvPlane / 1e3, 0.6 * 800 * Math.PI * 100 / 1.25 / 1e3);
+  es = e0(); es.load.Vz = 100; es.bolt.pre = true; es.bolt.cat = 'C'; er = SC.compute(es);
+  check('F_s,Rd M20 8.8 précontraint, cat. C, 2 surfaces, μ = 0,4 = 1·2·0,4·0,7·800·245/1,25 [kN]', er.groups.web.Fs / 1e3, 2 * 0.4 * 0.7 * 800 * 245 / 1.25 / 1e3);
+  // âme sous V_z seul : groupe 2 × 3, p1 = p2 = 60, excentrement g/2 + e1b + p1/2 = 80 mm
+  es = e0(); es.load.Vz = 100; er = SC.compute(es);
+  const Ip = 6 * 30 * 30 + 4 * 60 * 60, Mc = 100e3 * 80;
+  const fxc = Mc * 60 / Ip, fzc = 100e3 / 6 + Mc * 30 / Ip;
+  check('Âme, V_z = 100 kN : effort maxi par boulon = √((M·60/Ip)² + (V/6 + M·30/Ip)²) [kN]', er.groups.web.tot[er.groups.web.imax].f / 1e3, Math.hypot(fxc, fzc) / 1e3);
+  // M_y seul, tout par les semelles : F = M/(h − t_f)
+  es = e0(); es.load.My = 200; es.myShare = 'semelles'; er = SC.compute(es);
+  check('M_y = 200 kN·m, semelles seules : F_semelle = M/(h − t_f) [kN]', er.dist.tot.top.Fx / 1e3, 200e3 / (290 - 14));
+  check('… effort par boulon de semelle = F/6 (6 boulons, 2 plans) [kN]', er.groups.top.tot[0].f / 1e3, 200e3 / 276 / 6);
+  check('… semelle inférieure tendue : F_x = −M/(h − t_f) [kN]', er.dist.tot.bot.Fx / 1e3, -200e3 / 276);
+  // part d'inertie de l'âme
+  es.myShare = 'inertie'; er = SC.compute(es);
+  check('Part de M_y dans l\'âme = t_w·(h − 2t_f)³/12 / I_y', er.dist.eta, 8.5 * Math.pow(262, 3) / 12 / er.S.Iy);
+  // torsion : couple transversal dans les semelles
+  es = e0(); es.load.Mx = 5; er = SC.compute(es);
+  check('M_x = 5 kN·m : F_y semelle sup. = M_x/(h − t_f) [kN]', er.dist.tot.top.Ft / 1e3, 5e3 / 276);
+  // pression diamétrale, semelle de poutre t = 14, e1 = 45, p1 = 70, e2 = 70 (b/2 − w/2), une ligne par côté (w = 160)
+  es = e0(); es.load.My = 100; er = SC.compute(es);
+  const ply = er.groups.top.plies[0], d0 = 22;
+  const ab = Math.min(45 / (3 * d0), 70 / (3 * d0) - 0.25, 800 / 490, 1), k1 = Math.min(2.8 * 70 / d0 - 1.7, 1.4 * 160 / d0 - 1.7, 2.5);
+  check('F_b,Rd semelle de poutre, effort longitudinal = k₁·α_b·f_u·d·t/γ_M2 [kN]', ply.bx.Fb / 1e3, k1 * ab * 490 * 20 * 14 / 1.25 / 1e3);
+  // joint long : n1 = 8, p1 = 70 → Lj = 490 > 15d = 300 → β = 1 − (490 − 300)/(200·20)
+  es = e0(); es.load.My = 100; es.fl.n1 = 8; er = SC.compute(es);
+  check('Joint long L_j = 490 mm : β_Lf = 1 − (L_j − 15d)/(200d)', er.groups.top.bL, 1 - 190 / 4000);
+  // simple recouvrement : un plan de cisaillement
+  es = e0(); es.load.My = 100; es.top.double = false; er = SC.compute(es);
+  check('Semelle à plat simple : F_v,Rd du groupe = 1 plan', er.groups.top.Fv / er.bolt.FvPlane, 1);
+
   const lib = []; let nLib = 0, nBad = 0;
   const props = [['A', 6], ['Iy', 7], ['Wely', 8], ['Wply', 9], ['Avz', 10], ['Iz', 11], ['Welz', 12], ['Wplz', 13], ['It', 14]];
   const cmp = (name, s, r, tol, note) => {

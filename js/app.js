@@ -476,18 +476,23 @@
   // ======================================================================
   //  PROJETS
   // ======================================================================
+  const isSplice = (it) => (it.kind || (it.state && it.state.kind)) === 'eclisse';
   function summaryOf(st) {
-    try { const r = E.compute(st); const ms = (ks) => ks.reduce((a, k) => Math.max(a, r.env.byCrit[k] ? r.env.byCrit[k].r : 0), 0); return { sec: r.S ? r.S.name + ' ' + r.grade : '—', L: st.L, s: ms(E.SEC_KEYS), m: ms(E.MEM_KEYS), els: r.sls.max, max: r.valid ? r.max : null }; } catch (e) { return null; }
+    if (st && st.kind === 'eclisse') return window.FirmitasSplice.summary(st);
+    try {
+      const r = E.compute(st);
+      return { type: 'Poutre', sec: r.S ? `${r.S.name} ${r.grade} · L = ${fmt(+st.L, 2)} m` : '—', gov: r.sls.max > (r.env ? r.env.max : 0) ? 'ELS — flèche' : (r.env && r.env.worst && r.env.worst.gov ? E.CRITERIA[r.env.worst.gov].label : ''), max: r.valid ? r.max : null };
+    } catch (e) { return null; }
   }
   function renderProjets(app) {
     const kb = ST.usage() / 1024;
     const list = db.projects.map((p) => {
-      const isCur = db.current && db.current.projectId === p.id;
+      const isCur = [db.current, db.currentS].some((c) => c && c.projectId === p.id);
       const rows = p.items.map((it) => {
-        const sm = it.summary || summaryOf(it.state) || {};
-        const isIt = isCur && db.current.itemId === it.id;
-        const pc = (x) => (x == null ? '—' : pct(x));
-        return `<tr${isIt ? ' class="gov"' : ''}><td><b>${esc(it.name)}</b></td><td>${esc(sm.sec || '')}</td><td class="num">${fmt(+sm.L, 2)} m</td><td class="num">${pc(sm.s)}</td><td class="num">${pc(sm.m)}</td><td class="num">${pc(sm.els)}</td><td>${pill(sm.max)}</td><td class="f">${new Date(it.updated).toLocaleDateString('fr-FR')}</td>
+        const sm = summaryOf(it.state) || {};
+        const cur = isSplice(it) ? db.currentS : db.current;
+        const isIt = cur && cur.projectId === p.id && cur.itemId === it.id;
+        return `<tr${isIt ? ' class="gov"' : ''}><td><b>${esc(it.name)}</b></td><td>${esc(sm.type || '')}</td><td>${esc(sm.sec || '')}</td><td class="f">${sub(sm.gov || '')}</td><td class="num">${sm.max == null ? '—' : pct(sm.max)}</td><td>${pill(sm.max)}</td><td class="f">${new Date(it.updated).toLocaleDateString('fr-FR')}</td>
           <td style="white-space:nowrap"><button class="btn sm" data-act="open" data-p="${p.id}" data-i="${it.id}">Ouvrir</button> <button class="btn sm ghost" data-act="dupItem" data-p="${p.id}" data-i="${it.id}">Dupliquer</button> <button class="btn sm ghost" data-act="delItem" data-p="${p.id}" data-i="${it.id}">Supprimer</button></td></tr>`;
       }).join('');
       return `<div class="proj${isCur ? ' current' : ''}">
@@ -496,7 +501,7 @@
           <button class="btn sm" data-act="exportProj" data-p="${p.id}">Exporter .json</button>
           <button class="btn sm ghost" data-act="renameProj" data-p="${p.id}">Renommer</button>
           <button class="btn sm ghost" data-act="delProj" data-p="${p.id}">Supprimer</button></div>
-        ${p.items.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Repère</th><th>Section</th><th class="num">L</th><th class="num">Sections</th><th class="num">Instabilités</th><th class="num">ELS</th><th></th><th>Modifié</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="empty">Aucune vérification enregistrée dans ce projet.</p>'}
+        ${p.items.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Repère</th><th>Type</th><th>Élément</th><th>Critère dimensionnant</th><th class="num">Taux</th><th></th><th>Modifié</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="empty">Aucune vérification enregistrée dans ce projet.</p>'}
       </div>`;
     }).join('');
     app.innerHTML = `<div class="page">
@@ -526,34 +531,46 @@
     });
   }
   const confirmBox = (title, text) => modal(title, `<p>${text}</p>`, [{ label: 'Annuler' }, { label: 'Confirmer', primary: true, value: () => true }]);
-  async function askSave(asNew) {
-    const projOpts = db.projects.map((p) => `<option value="${p.id}"${db.current && db.current.projectId === p.id ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
+  const curOf = (kind) => (kind === 'eclisse' ? db.currentS : db.current);
+  const setCur = (kind, v) => { if (kind === 'eclisse') db.currentS = v; else db.current = v; };
+  function crumbK(kind) {
+    const c = curOf(kind);
+    const p = c && db.projects.find((x) => x.id === c.projectId);
+    const it = p && p.items.find((x) => x.id === c.itemId);
+    return { p, it };
+  }
+  async function askSave(asNew, obj = state, kind = 'beam') {
+    const cc = curOf(kind) || db.current || db.currentS;
+    const projOpts = db.projects.map((p) => `<option value="${p.id}"${cc && cc.projectId === p.id ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
     return modal(asNew ? 'Enregistrer sous…' : 'Enregistrer la vérification', `
       <div class="fields wide" style="grid-template-columns:1fr">
         <label class="field">Projet<select id="mProj">${projOpts}<option value="__new"${db.projects.length ? '' : ' selected'}>+ Nouveau projet…</option></select></label>
         <label class="field" id="mNewWrap"${db.projects.length ? ' hidden' : ''}>Nom du nouveau projet<input type="text" id="mNewName" placeholder="ex. Pavillon"></label>
-        <label class="field">Repère de l'élément<input type="text" id="mName" value="${esc(state.name)}"></label>
+        <label class="field">Repère de l'élément<input type="text" id="mName" value="${esc(obj.name)}"></label>
       </div>`, [{ label: 'Annuler' }, { label: 'Enregistrer', primary: true, value: (bg) => ({ proj: $('#mProj', bg).value, newName: $('#mNewName', bg).value.trim(), name: $('#mName', bg).value.trim() }) }]);
   }
   document.addEventListener('change', (e) => { if (e.target.id === 'mProj') { const w = $('#mNewWrap'); if (w) w.hidden = e.target.value !== '__new'; } });
-  function storeItem(projectId, itemId, name) {
+  function storeItem(projectId, itemId, name, obj = state, kind = 'beam') {
     const p = db.projects.find((x) => x.id === projectId);
-    state.name = name || state.name;
-    const copy = JSON.parse(JSON.stringify(state));
+    obj.name = name || obj.name;
+    const copy = JSON.parse(JSON.stringify(obj));
     let it = itemId && p.items.find((x) => x.id === itemId);
     if (!it) { it = { id: ST.uid(), created: Date.now() }; p.items.push(it); }
-    Object.assign(it, { name: state.name || 'Sans nom', state: copy, updated: Date.now(), summary: summaryOf(copy) });
-    db.current = { projectId, itemId: it.id };
-    dirty = false; db.draft = state; db.draftDirty = false;
+    Object.assign(it, { name: obj.name || 'Sans nom', kind, state: copy, updated: Date.now() });
+    setCur(kind, { projectId, itemId: it.id });
+    if (kind === 'beam') { dirty = false; db.draft = state; db.draftDirty = false; }
+    else { db.sdraft = obj; db.sdraftDirty = false; }
     toast(ST.save(db) ? 'Enregistré dans « ' + p.name + ' »' : 'Stockage du navigateur plein : exportez puis supprimez d\'anciens projets.');
   }
-  async function doSave(asNew) {
-    const cur = crumb();
-    if (!asNew && cur.p && cur.it) { storeItem(cur.p.id, cur.it.id, state.name); refreshDynamic(); return; }
-    const r = await askSave(asNew); if (!r) return;
+  async function doSave(asNew, obj = state, kind = 'beam') {
+    const cur = crumbK(kind);
+    if (!asNew && cur.p && cur.it) { storeItem(cur.p.id, cur.it.id, obj.name, obj, kind); if (kind === 'beam') refreshDynamic(); return true; }
+    const r = await askSave(asNew, obj, kind); if (!r) return false;
     let pid = r.proj;
     if (pid === '__new' || !pid) { const p = { id: ST.uid(), name: r.newName || 'Projet sans nom', created: Date.now(), items: [] }; db.projects.push(p); pid = p.id; }
-    storeItem(pid, null, r.name); route();
+    storeItem(pid, null, r.name, obj, kind);
+    if (kind === 'beam') route();
+    return true;
   }
   function download(name, text, type) {
     const blob = new Blob([text], { type: type || 'application/octet-stream' });
@@ -623,7 +640,12 @@
     }
     else if (a === 'open' || a === 'dupItem' || a === 'delItem') {
       const p = db.projects.find((x) => x.id === b.dataset.p), it = p.items.find((x) => x.id === b.dataset.i);
-      if (a === 'open') {
+      if (a === 'open' && isSplice(it)) {
+        if (window.FirmitasSplice.dirty && !(await confirmBox('Ouvrir', 'Les modifications non enregistrées de l\'éclisse en cours seront perdues. Continuer ?'))) return;
+        window.FirmitasSplice.load(JSON.parse(JSON.stringify(it.state)));
+        db.currentS = { projectId: p.id, itemId: it.id }; ST.save(db);
+        location.hash = '#/eclisse';
+      } else if (a === 'open') {
         if (dirty && !(await confirmBox('Ouvrir', 'Les modifications non enregistrées de la vérification en cours seront perdues. Continuer ?'))) return;
         state = ST.upgrade(JSON.parse(JSON.stringify(it.state)));
         db.current = { projectId: p.id, itemId: it.id }; dirty = false; persistDraft();
@@ -634,7 +656,7 @@
       } else {
         if (!(await confirmBox('Supprimer', `Supprimer la vérification « ${esc(it.name)} » ?`))) return;
         p.items = p.items.filter((x) => x !== it);
-        if (db.current && db.current.itemId === it.id) db.current = { projectId: p.id, itemId: null };
+        [db.current, db.currentS].forEach((c) => { if (c && c.itemId === it.id) c.itemId = null; });
         ST.save(db); route();
       }
     }
@@ -644,7 +666,7 @@
     }
     else if (a === 'reportProj') {
       const p = db.projects.find((x) => x.id === b.dataset.p);
-      window.FirmitasReport.open(p.items.map((it) => ({ state: ST.upgrade(JSON.parse(JSON.stringify(it.state))), project: p.name })));
+      window.FirmitasReport.open(p.items.map((it) => ({ state: isSplice(it) ? JSON.parse(JSON.stringify(it.state)) : ST.upgrade(JSON.parse(JSON.stringify(it.state))), project: p.name })));
     }
   });
   app.addEventListener('change', (e) => {
@@ -657,7 +679,7 @@
           if (!p || !Array.isArray(p.items)) throw new Error('format');
           p.id = ST.uid();
           if (db.projects.some((x) => x.name === p.name)) p.name += ' (import)';
-          p.items.forEach((it) => { it.id = ST.uid(); it.state = ST.upgrade(it.state); });
+          p.items.forEach((it) => { it.id = ST.uid(); it.state = isSplice(it) ? window.FirmitasSpliceCalc.upgrade(it.state) : ST.upgrade(it.state); });
           db.projects.push(p); ST.save(db); route(); toast('Projet « ' + p.name + ' » importé');
         } catch (err) { toast('Fichier non reconnu'); }
       };
@@ -671,13 +693,20 @@
     $$('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.route === r));
     const { p } = crumb();
     $('#topMeta').innerHTML = p ? `${esc(p.name)}<span>${p.items.length} vérification${p.items.length > 1 ? 's' : ''}</span>` : 'Vérification acier<span>NF EN 1993-1-1 + AN</span>';
-    const views = { verification: renderVerification, detail: renderDetail, sections: renderSections, methode: renderMethode, projets: renderProjets };
+    if (r === 'eclisse') { const ps = crumbK('eclisse').p; $('#topMeta').innerHTML = ps ? `${esc(ps.name)}<span>éclisse</span>` : 'Éclisse boulonnée<span>NF EN 1993-1-8 + AN</span>'; }
+    const views = { eclisse: (el) => window.FirmitasSplice.render(el), verification: renderVerification, detail: renderDetail, sections: renderSections, methode: renderMethode, projets: renderProjets };
     (views[r] || renderVerification)(app);
     if (r !== 'verification') window.scrollTo(0, 0);
   }
   window.addEventListener('hashchange', route);
-  window.addEventListener('beforeunload', () => { db.draft = state; db.draftDirty = dirty; ST.save(db); });
+  window.addEventListener('beforeunload', () => { db.draft = state; db.draftDirty = dirty; db.sdraft = window.FirmitasSplice.state; db.sdraftDirty = window.FirmitasSplice.dirty; ST.save(db); });
+  window.FirmitasApp = {
+    fmt, fmtG, pct, esc, sub, sectionSvg, get state() { return state; },
+    crumbK, confirmBox, saveDb: () => ST.save(db),
+    saveItem: (kind, obj, asNew) => doSave(asNew, obj, kind),
+    newItem: (kind) => { const c = curOf(kind); setCur(kind, c ? { projectId: c.projectId, itemId: null } : null); ST.save(db); }
+  };
+  window.FirmitasSplice.init(db);
+  window.FirmitasSplice.bind(app);
   route();
-
-  window.FirmitasApp = { fmt, fmtG, pct, esc, sub, sectionSvg, get state() { return state; } };
 })();

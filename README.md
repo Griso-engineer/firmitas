@@ -20,6 +20,11 @@ prédimensionnement d'une travée) ; les anomalies relevées et corrigées sont 
 - **Sollicitations** : travée appuyée, appuyée–encastrée, bi-encastrée ou console ; charges réparties
   et ponctuelles dans les deux plans, poids propre, effort normal ; ou sollicitations de calcul saisies.
 - **Vérifications** : § 5.5, 6.2.3 à 6.2.10, 6.3.1 à 6.3.3 ; M<sub>cr</sub> à 3 facteurs ; ELS (AN tableau 1).
+- **Éclisse boulonnée** (onglet *Éclisse*) : couvre-joints de semelles, chacun simple ou dédoublé
+  (plat extérieur + 2 plats intérieurs), et plats d'âme ; boulons ordinaires (cat. A) ou précontraints
+  (cat. B ou C) ; torseur ELU complet N, V_y, V_z, M_x, M_y, M_z ; schémas de répartition entre les plats et
+  d'efforts par boulon (par composante ou résultante) ; NF EN 1993-1-8 (cisaillement, glissement, pression
+  diamétrale par pli, joints longs, rupture en bloc) et vérification des plats.
 - **Fiche NDC** (PDF, Word) et **projets** (localStorage, export / import .json).
 
 ## Lancer en local
@@ -43,4 +48,6 @@ powershell -ExecutionPolicy Bypass -File serve.ps1
 | `js/store.js` | État par défaut, projets |
 | `js/report.js` | Fiche NDC |
 | `js/app.js` | Interface |
+| `js/eclisse-calc.js` | Moteur de l'éclisse (`FirmitasSpliceCalc.compute`) |
+| `js/eclisse.js` | Interface, schémas et fiche NDC de l'éclisse |
 | `js/xl-ref.js` | Valeurs tabulées du classeur, pour `tests.html` uniquement |
