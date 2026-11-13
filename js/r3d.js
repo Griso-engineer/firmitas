@@ -41,7 +41,7 @@
       const j = (i + 1) % n, t = 2 * Math.PI * (i + 1) / n;
       const u = Math.cos(t), w = Math.sin(t);
       const nn = axis === 'z' ? [u, w, 0] : axis === 'y' ? [u, 0, w] : [0, u, w];
-      faces.push({ v: [A[i], A[j], B[j], B[i]], n: nn });
+      faces.push({ v: [A[i], A[j], B[j], B[i]], n: nn, smooth: n > 12 });
     }
     return faces.map((f) => Object.assign(f, { col: p.col, id: p.id }));
   }
@@ -105,7 +105,7 @@
       const col = base.map((c) => Math.min(255, Math.round(c * sh)));
       const P = f.v.map((q) => { const p = proj(q[0], q[1], q[2]); return { x: p.x * SS, y: p.y * SS, d: p.d }; });
       for (let i = 1; i < P.length - 1; i++) tri(P[0], P[i], P[i + 1], col);
-      vis.push(P);
+      if (!f.smooth) vis.push(P);
     });
     const ec = hex(opts.edgeCol || '#111110');
     vis.forEach((P) => { for (let i = 0; i < P.length; i++) line(P[i], P[(i + 1) % P.length], ec); });

@@ -1,0 +1,314 @@
+/* ==========================================================================
+   Firmitas — assemblage boulonné par platines d'about (extrémités de barres)
+   Profils en I/H (méthode des composantes, NF EN 1993-1-8 § 6.2) et tubes RHS/SHS/CHS
+   (répartition élastique des tractions, tronçon en T équivalent par boulon).
+   Les deux platines sont identiques : une platine et les boulons sont vérifiés.
+   Unités internes : N, mm, MPa. Entrées : kN, kN·m, mm.
+   Torseur au droit du joint : N > 0 compression ; M_y > 0 comprime la face supérieure (z > 0) ;
+   M_z > 0 comprime le côté +y ; V_y, V_z efforts tranchants ; M_x torsion.
+   ========================================================================== */
+(function () {
+  'use strict';
+  const SC = window.FirmitasSpliceCalc, D = window.FIRMITAS_DATA, GEO = window.FirmitasGeom;
+  const { num, BOLTS, CLASSES, d0Of, fuOf, bearing } = SC;
+  const PI = Math.PI, BIG = 1e9, SQ2 = Math.SQRT2;
+  // diamètre moyen d_m de la tête / de l'écrou (moyenne entre plats et sur angles, ISO 4014/4032) pour le poinçonnement
+  const DM = { 12: 19.0, 14: 22.0, 16: 25.0, 18: 28.0, 20: 31.5, 22: 34.5, 24: 37.8, 27: 42.6, 30: 47.5, 36: 57.0 };
+  const BETAW = { S235: 0.8, S275: 0.85, S355: 0.9, S420: 1.0, S460: 1.0 };
+
+  function defaultState() {
+    return {
+      v: 1, kind: 'platines', name: 'Platines P1', shape: 'I',
+      sec: { kind: 'cat', fam: 'HE A', name: 'HE 300 A', prs: { h: 500, b: 250, tw: 10, tf: 20 } },
+      tube: { kind: 'cat', fam: 'SHS (tube carré)', name: 'SHS 200 × 200 × 10', fab: 'hot', h: 200, b: 100, t: 8, d: 219.1 },
+      grade: 'S355', plateGrade: 'S355',
+      bolt: { d: 22, cls: '10.9', threads: true },
+      gam: { M0: 1, M2: 1.25 },
+      plate: { tp: 25, af: 8, aw: 5 },
+      Ilay: { extTop: true, extBot: true, mx: 45, ex: 40, nInTop: 1, nInBot: 1, mi: 50, p: 80, w: 150, bp: 300, over: 15 },
+      Tlay: { sides: 4, nSide: 2, m: 40, e: 35, nChs: 8, over: 15 },
+      cur: 0,
+      loads: [{ name: 'ELU 1', N: -50, Vy: 0, Vz: 120, Mx: 0, My: 160, Mz: 0 }]
+    };
+  }
+  function upgrade(s) {
+    const d = defaultState();
+    (function merge(dst, src) {
+      Object.keys(src).forEach((k) => {
+        if (dst[k] === undefined) dst[k] = src[k];
+        else if (src[k] && typeof src[k] === 'object' && !Array.isArray(src[k]) && dst[k] && typeof dst[k] === 'object') merge(dst[k], src[k]);
+      });
+    })(s, d);
+    return s;
+  }
+  const loadOf = (s, idx) => { const L = Array.isArray(s.loads) && s.loads.length ? s.loads : [{}]; return L[Math.max(0, Math.min(L.length - 1, idx == null ? (+s.cur || 0) : idx))]; };
+
+  function memberOf(s) {
+    if (s.shape === 'I') return SC.beamOf(s);
+    const t = s.tube || {};
+    if (t.kind === 'custom') {
+      if (s.shape === 'chs') { const d = num(t.d), tt = num(t.t); return d > 2 * tt && tt > 0 ? GEO.chs(d, tt, t.fab) : null; }
+      const h = num(t.h), b = num(t.b), tt = num(t.t); return h > 3 * tt && b > 3 * tt && tt > 0 ? GEO.rhs(h, b, tt, t.fab) : null;
+    }
+    const S = D.findSection(t.fam, t.name, t.fab);
+    if (!S) return null;
+    if (s.shape === 'chs' && S.type !== 'CHS') return null;
+    if (s.shape === 'rhs' && S.type !== 'RHS') return null;
+    return S;
+  }
+
+  // tronçon en T équivalent (EN 1993-1-8 § 6.2.4, tableau 6.2, méthode 1, avec effet de levier)
+  function tstub(leff1, leff2, m, n, tf, fy, gM0, sumFtRd) {
+    const Mpl1 = 0.25 * leff1 * tf * tf * fy / gM0, Mpl2 = 0.25 * leff2 * tf * tf * fy / gM0;
+    const F1 = m > 0 ? 4 * Mpl1 / m : Infinity, F2 = (2 * Mpl2 + n * sumFtRd) / (m + n), F3 = sumFtRd;
+    const F = Math.min(F1, F2, F3);
+    return { F, F1, F2, F3, mode: F === F1 ? 1 : F === F2 ? 2 : 3, Mpl1, Mpl2 };
+  }
+
+  // ---------- géométrie : profils en I ----------
+  function geomI(s, S, d) {
+    const L = s.Ilay, h2 = S.h / 2;
+    const mxIn = num(L.mx), ex = num(L.ex), mi = num(L.mi), p = num(L.p), w = num(L.w), bp = num(L.bp), over = num(L.over);
+    const rows = [];
+    if (L.extTop) rows.push({ z: h2 + mxIn, type: 'ext', side: 'top' });
+    for (let i = 0; i < Math.round(num(L.nInTop)); i++) rows.push({ z: h2 - S.tf - mi - i * p, type: i === 0 ? 'adj' : 'inner', side: 'top' });
+    for (let i = Math.round(num(L.nInBot)) - 1; i >= 0; i--) rows.push({ z: -h2 + S.tf + mi + i * p, type: i === 0 ? 'adj' : 'inner', side: 'bot' });
+    if (L.extBot) rows.push({ z: -h2 - mxIn, type: 'ext', side: 'bot' });
+    rows.sort((a, b) => b.z - a.z);
+    const topEdge = L.extTop ? h2 + mxIn + ex : h2 + over, botEdge = L.extBot ? -h2 - mxIn - ex : -h2 - over;
+    const bolts = []; rows.forEach((r, i) => { r.i = i; [-w / 2, w / 2].forEach((y) => bolts.push({ y, z: r.z, row: i })); });
+    return { rows, bolts, w, bp, hp: topEdge - botEdge, topEdge, botEdge, mx: mxIn, ex, mi, p, e: (bp - w) / 2, over };
+  }
+
+  // ---------- géométrie : tubes ----------
+  function geomT(s, S) {
+    const L = s.Tlay, m = num(L.m), e = num(L.e), over = num(L.over);
+    const bolts = [];
+    if (s.shape === 'chs') {
+      const n = Math.max(3, Math.round(num(L.nChs, 8))), Rb = S.d / 2 + m;
+      for (let k = 0; k < n; k++) { const a = PI / 2 + PI / n + 2 * PI * k / n; bolts.push({ y: Rb * Math.cos(a), z: Rb * Math.sin(a), trib: 2 * PI * Rb / n }); }
+      return { bolts, m, e, Rb, Dp: 2 * (Rb + e), round: true, n };
+    }
+    const ns = Math.max(1, Math.round(num(L.nSide, 2))), sides = num(L.sides) === 2 ? 2 : 4;
+    const put = (len, n) => { const ps = len / n; const a = []; for (let k = 0; k < n; k++) a.push((k - (n - 1) / 2) * ps); return { a, ps }; };
+    const tb = put(S.b, ns);
+    tb.a.forEach((y) => { bolts.push({ y, z: S.h / 2 + m, trib: tb.ps, face: 'top' }); bolts.push({ y, z: -S.h / 2 - m, trib: tb.ps, face: 'bot' }); });
+    if (sides === 4) {
+      const lr = put(S.h, ns);
+      lr.a.forEach((z) => { bolts.push({ y: S.b / 2 + m, z, trib: lr.ps, face: 'right' }); bolts.push({ y: -S.b / 2 - m, z, trib: lr.ps, face: 'left' }); });
+    }
+    const bp = sides === 4 ? S.b + 2 * (m + e) : S.b + 2 * over, hp = S.h + 2 * (m + e);
+    return { bolts, m, e, bp, hp, sides, ns, round: false };
+  }
+
+  function compute(s, idx) {
+    const R = { valid: true, warnings: [], info: [], checks: [] };
+    const S = memberOf(s); R.S = S;
+    if (!S) { R.valid = false; R.warnings.push(s.shape === 'I' ? 'Section invalide : profil en I à ailes parallèles ou PRS requis.' : 'Section de tube invalide.'); return R; }
+    const LD = loadOf(s, idx); R.loadName = LD.name || '';
+    const L = { N: num(LD.N) * 1e3, Vy: num(LD.Vy) * 1e3, Vz: num(LD.Vz) * 1e3, Mx: num(LD.Mx) * 1e6, My: num(LD.My) * 1e6, Mz: num(LD.Mz) * 1e6 };
+    R.L = L;
+    const gam = { M0: num(s.gam.M0, 1) || 1, M2: num(s.gam.M2, 1.25) || 1.25 }; R.gam = gam;
+    const b = s.bolt, d = num(b.d, 20), As = BOLTS[d] || 245, d0 = d0Of(d), Ab = PI * d * d / 4, bc = CLASSES[b.cls] || CLASSES['8.8'];
+    const threads = b.threads !== false;
+    const tp = num(s.plate.tp), fyp = D.fyOf(s.plateGrade, tp, 'en10025'), fup = fuOf(s.plateGrade, tp);
+    const tm = S.type === 'I' ? S.tf : S.t, fym = D.fyOf(s.grade, tm, 'en10025'), fum = fuOf(s.grade, tm);
+    const FtRd = 0.9 * bc.fub * As / gam.M2, BpRd = 0.6 * PI * (DM[d] || 1.6 * d) * tp * fup / gam.M2;
+    const Ftb = Math.min(FtRd, BpRd);
+    const FvRd = (threads ? bc.av * As : 0.6 * Ab) * bc.fub / gam.M2;
+    R.bolt = { d, d0, As, fub: bc.fub, cls: b.cls, threads, FtRd, BpRd, Ftb, FvRd };
+    R.mat = { fyp, fup, fym, fum }; R.tp = tp;
+    const add = (grp, id, label, ref, Ed, Rd, extra) => {
+      const r = Rd > 0 ? Math.abs(Ed) / Rd : (Math.abs(Ed) > 0 ? Infinity : 0);
+      R.checks.push(Object.assign({ grp, id, label, ref, Ed, Rd, r }, extra || {}));
+    };
+    const aw = num(s.plate.aw), af = num(s.plate.af);
+    const fw = fum / (Math.sqrt(3) * (BETAW[s.grade] || 0.9) * gam.M2);    // résistance d'une soudure d'angle par unité de gorge (4.5.3.3)
+
+    if (S.type === 'I') {
+      const G = geomI(s, S, d); R.geo = G;
+      if (Math.abs(L.Mz) > 1 || Math.abs(L.Mx) > 1) R.warnings.push('M_z et M_x ne sont pas traités pour un profil en I (méthode des composantes de l\'EN 1993-1-8 en flexion d\'axe fort) : vérification incomplète.');
+      if (G.e < 1.2 * d0 - 1e-6) R.warnings.push(`Pince transversale e = (b_p − w)/2 = ${G.e.toFixed(1)} mm < 1,2·d₀.`);
+      if (G.bp < S.b - 1e-6) R.warnings.push(`Platine plus étroite (${G.bp} mm) que la semelle (${S.b} mm).`);
+      const mw = (G.w - S.tw) / 2 - 0.8 * aw * SQ2;
+      if (mw <= 0.5 * d) R.warnings.push(`Pince w trop faible : la distance boulon–cordon d'âme m = ${mw.toFixed(1)} mm est trop petite pour la tête / l'écrou.`);
+      if (G.w / 2 + 1.0 * d > S.b / 2 && G.rows.some((r) => r.type !== 'ext')) R.info.push('Rangées intérieures : vérifier le passage de la clé entre semelle et âme.');
+      const mfx = G.mx - 0.8 * af * SQ2;                      // rangée débordante : distance boulon–cordon de semelle
+      if (G.rows.some((r) => r.type === 'ext') && mfx <= 0.5 * d) R.warnings.push(`Rangée débordante trop proche de la semelle (m_x = ${mfx.toFixed(1)} mm).`);
+      if (G.ex < 1.2 * d0 - 1e-6 && G.rows.some((r) => r.type === 'ext')) R.warnings.push(`Pince e_x de la rangée débordante = ${G.ex} mm < 1,2·d₀.`);
+      const nI = Math.min(G.e, 1.25 * mw);
+      // longueurs efficaces par rangée (tableau 6.6), groupes de rangées intérieures de chaque côté
+      const rowCap = (r, tensionSide) => {
+        let cp, nc, m, n;
+        if (r.type === 'ext') {
+          m = mfx; n = Math.min(G.ex, 1.25 * m);
+          cp = Math.min(2 * PI * m, PI * m + G.w, PI * m + 2 * G.e);
+          nc = Math.min(4 * m + 1.25 * G.ex, G.e + 2 * m + 0.625 * G.ex, 0.5 * G.bp, 0.5 * G.w + 2 * m + 0.625 * G.ex);
+        } else {
+          m = mw; n = nI;
+          const adjT = r.type === 'adj' && r.side === tensionSide;          // rangée près de la semelle tendue : α (minimum 4,45)
+          const alpha = 4.45;
+          cp = 2 * PI * m; nc = adjT ? alpha * m : 4 * m + 1.25 * G.e;
+          // effet de groupe : rangées intérieures voisines du même côté
+          const same = G.rows.filter((q) => q.type !== 'ext' && q.side === r.side);
+          if (same.length > 1) {
+            const ps = same.filter((q) => q !== r).map((q) => Math.abs(q.z - r.z));
+            const pn = Math.min(...ps);
+            const isEnd = same[0] === r || same[same.length - 1] === r;
+            let cpg, ncg;
+            if (adjT) { cpg = PI * m + pn; ncg = 0.5 * pn + alpha * m - (2 * m + 0.625 * G.e); }
+            else if (isEnd) { cpg = PI * m + pn; ncg = 2 * m + 0.625 * G.e + 0.5 * pn; }
+            else { cpg = 2 * pn; ncg = pn; }
+            cp = Math.min(cp, cpg); nc = Math.min(nc, ncg);
+          }
+        }
+        const l1 = Math.min(cp, nc), l2 = nc;
+        const ts = tstub(l1, l2, m, n, tp, fyp, gam.M0, 2 * Ftb);
+        const web = r.type === 'ext' ? Infinity : l1 * S.tw * fym / gam.M0;   // âme tendue (6.2.6.8), b_eff = l_eff
+        return { cp, nc, l1, l2, m, n, ts, web, F: Math.min(ts.F, web) };
+      };
+      const fy0 = fym;
+      const McRd = S.Wply * fy0 / gam.M0;
+      const FcRd = McRd / (S.h - S.tf);
+      R.comp = { McRd, FcRd };
+      // moment résistant pour un sens de flexion : 'bot' = rangées inférieures tendues (M_y > 0)
+      const Mres = (tensionSide) => {
+        const zc = tensionSide === 'bot' ? S.h / 2 - S.tf / 2 : -S.h / 2 + S.tf / 2;
+        const tr = G.rows.map((r) => Object.assign({}, r, { h: tensionSide === 'bot' ? zc - r.z : r.z - zc })).filter((r) => r.h > 1e-6);
+        tr.sort((a, b) => b.h - a.h);
+        let sum = 0, Fx19 = null;
+        const out = tr.map((r) => {
+          const c = rowCap(r, tensionSide);
+          let F = c.F;
+          if (Fx19) F = Math.min(F, Fx19.F * r.h / Fx19.h);                // 6.2.7.2 (9)
+          F = Math.min(F, Math.max(0, FcRd - sum));                       // 6.2.7.2 (7) : ΣF ≤ F_c,fb,Rd
+          sum += F;
+          if (!Fx19 && F > 1.9 * FtRd) Fx19 = { F, h: r.h };
+          return Object.assign(r, { cap: c, F });
+        });
+        const M = out.reduce((a, r) => a + r.F * r.h, 0);
+        return { rows: out, M, zc };
+      };
+      const MpBot = Mres('bot'), MpTop = Mres('top');
+      R.Mres = { bot: MpBot, top: MpTop };
+      // traction pure : toutes les rangées, sans limite de compression
+      const NtRd = G.rows.reduce((a, r) => a + rowCap(r, r.side).F, 0);
+      const NcRd = S.A * fym / gam.M0;
+      R.NjRd = { t: NtRd, c: NcRd };
+      const Mside = L.My >= 0 ? MpBot : MpTop;
+      const MjRd = Mside.M;
+      R.MjRd = MjRd; R.Mside = L.My >= 0 ? 'bot' : 'top';
+      const etaM = Math.abs(L.My) / MjRd, etaN = L.N < 0 ? -L.N / NtRd : L.N / NcRd;
+      add('plate', 'MN', `Moment et effort normal : M_j,Ed/M_j,Rd + N_j,Ed/N_j,Rd (M_j,Rd = ${(MjRd / 1e6).toFixed(1)} kN·m, N_j,Rd = ${((L.N < 0 ? NtRd : NcRd) / 1e3).toFixed(0)} kN ${L.N < 0 ? 'traction' : 'compression'})`, '6.2.7.1 (6.23)', etaM + etaN, 1, { ratioOnly: true });
+      add('beam', 'Fc', 'Semelle et âme comprimées : F_c,Ed = |M_y|/(h − t_f) + part de N en compression', '6.2.6.7', Math.abs(L.My) / (S.h - S.tf) + Math.max(0, L.N) / 2, FcRd);
+      // efforts de traction dans les boulons sous le torseur : rangées tendues mobilisées au prorata de l'utilisation
+      const etaT = Math.min(1, etaM + Math.max(0, etaN));
+      const FtRow = {};
+      Mside.rows.forEach((r) => { FtRow[r.i] = r.F * Math.min(1, etaM) / 2; });
+      if (L.N < 0) G.rows.forEach((r) => { FtRow[r.i] = (FtRow[r.i] || 0) + rowCap(r, r.side).F * etaN / 2; });
+      R.FtBolt = G.bolts.map((q) => FtRow[q.row] || 0);
+      R.etaT = etaT;
+      // cisaillement : réparti sur tous les boulons, interaction avec la traction (tableau 3.4)
+      const nb = G.bolts.length, V = Math.hypot(L.Vy, L.Vz), FvEd = V / nb;
+      let worst = 0, iw = 0;
+      G.bolts.forEach((q, i) => { const v = FvEd / FvRd + R.FtBolt[i] / (1.4 * FtRd); if (v > worst) { worst = v; iw = i; } });
+      R.FvEd = FvEd;
+      add('bolts', 'v', `Boulons — cisaillement (V/n = ${(FvEd / 1e3).toFixed(1)} kN)`, '3.6.1 tab. 3.4', FvEd, FvRd);
+      add('bolts', 'vt', `Boulons — cisaillement + traction (boulon le plus tendu : F_t,Ed = ${(R.FtBolt[iw] / 1e3).toFixed(1)} kN)`, 'tab. 3.4', worst, 1, { ratioOnly: true });
+      add('bolts', 't', 'Boulons — traction (F_t,Rd) et poinçonnement (B_p,Rd)', 'tab. 3.4', Math.max(...R.FtBolt), Ftb, { note: `F_t,Rd = ${(FtRd / 1e3).toFixed(1)} kN ; B_p,Rd = ${(BpRd / 1e3).toFixed(1)} kN (d_m = ${(DM[d] || 1.6 * d).toFixed(1)} mm)` });
+      // pression diamétrale sur la platine (effort tranchant vertical / horizontal)
+      const zs = G.rows.map((r) => r.z), pmin = zs.length > 1 ? Math.min(...zs.slice(1).map((z, i) => zs[i] - z)) : BIG;
+      const eV = Math.min(G.topEdge - zs[0], zs[zs.length - 1] - G.botEdge);
+      const bz = bearing(d, d0, tp, fup, bc.fub, gam.M2, { eEnd: eV, pAlong: pmin, nAlong: zs.length, eEdge: G.e, pPerp: G.w, nPerp: 2 });
+      const by = bearing(d, d0, tp, fup, bc.fub, gam.M2, { eEnd: G.e, pAlong: G.w, nAlong: 2, eEdge: eV, pPerp: pmin, nPerp: zs.length });
+      add('plate', 'b', `Platine — pression diamétrale (t = ${tp} mm)`, '3.6.1 tab. 3.4', Math.hypot(L.Vz / nb / bz.Fb, L.Vy / nb / by.Fb), 1, { ratioOnly: true, note: `F_b,z,Rd = ${(bz.Fb / 1e3).toFixed(1)} kN ; F_b,y,Rd = ${(by.Fb / 1e3).toFixed(1)} kN` });
+      // soudures (méthode simplifiée 4.5.3.3) : semelles (effort de semelle), âme (V_z et part de N)
+      const Af = S.b * S.tf, Aw = S.A - 2 * Af;
+      const Ffl = Math.abs(L.My) / (S.h - S.tf) + Math.max(0, -L.N) * Af / S.A;
+      const Lf = 2 * S.b - S.tw, Lw = 2 * (S.h - 2 * S.tf - 2 * S.r);
+      add('weld', 'wf', `Soudure de semelle (2 cordons a = ${af} mm, L = ${Lf.toFixed(0)} mm)`, '4.5.3.3', Ffl / Lf, fw * af, { perLen: true });
+      add('weld', 'ww', `Soudure d'âme (2 cordons a = ${aw} mm, L = ${Lw.toFixed(0)} mm)`, '4.5.3.3', Math.hypot(Math.abs(L.Vz), Math.max(0, -L.N) * Aw / S.A) / Lw, fw * aw, { perLen: true });
+      R.Ftb = Ftb;
+    } else {
+      // ---------- tubes ----------
+      const G = geomT(s, S); R.geo = G;
+      const t = S.t, aT = aw;
+      const mEff = G.m - 0.8 * aT * SQ2;
+      if (mEff <= 0.5 * d) R.warnings.push(`Boulons trop proches de la paroi : m = ${mEff.toFixed(1)} mm (passage de la clé et du cordon à vérifier).`);
+      if (G.e < 1.2 * d0 - 1e-6) R.warnings.push(`Pince e = ${G.e} mm < 1,2·d₀.`);
+      const nT = Math.min(G.e, 1.25 * mEff);
+      const n = G.bolts.length;
+      const Iz = G.bolts.reduce((a, q) => a + q.z * q.z, 0), Iy = G.bolts.reduce((a, q) => a + q.y * q.y, 0);
+      // tractions élastiques (boulons rapportés au centre du groupe ; N > 0 compression)
+      const Ft = G.bolts.map((q) => -L.N / n + (Iz > 0 ? L.My * (-q.z) / Iz : 0) + (Iy > 0 ? L.Mz * (-q.y) / Iy : 0));
+      R.FtBolt = Ft.map((f) => Math.max(0, f));
+      const caps = G.bolts.map((q) => {
+        const cp = 2 * PI * mEff, nc = 4 * mEff + 1.25 * G.e;
+        const l1 = Math.min(cp, nc, q.trib), l2 = Math.min(nc, q.trib);
+        const ts = tstub(l1, l2, mEff, nT, tp, fyp, gam.M0, Ftb);
+        const wall = q.trib * t * fym / gam.M0;                 // bande de paroi tendue
+        return { l1, l2, ts, wall, F: Math.min(ts.F, wall) };
+      });
+      R.caps = caps;
+      let worstT = 0, it = 0;
+      R.FtBolt.forEach((f, i) => { const r = f / caps[i].F; if (r > worstT) { worstT = r; it = i; } });
+      const c0 = caps[it];
+      add('plate', 'tT', `Tronçon en T par boulon (platine + boulon, mode ${c0.ts.mode}) et paroi tendue`, '6.2.4 tab. 6.2', R.FtBolt[it], c0.F, { note: `l_eff,1 = ${c0.l1.toFixed(0)} mm, m = ${mEff.toFixed(1)} mm, n = ${nT.toFixed(1)} mm ; F_T,1 = ${(c0.ts.F1 / 1e3).toFixed(1)}, F_T,2 = ${(c0.ts.F2 / 1e3).toFixed(1)}, F_T,3 = ${(c0.ts.F3 / 1e3).toFixed(1)} kN ; paroi : ${(c0.wall / 1e3).toFixed(1)} kN` });
+      add('bolts', 't', 'Boulons — traction (F_t,Rd) et poinçonnement (B_p,Rd)', 'tab. 3.4', Math.max(...R.FtBolt), Ftb, { note: `F_t,Rd = ${(FtRd / 1e3).toFixed(1)} kN ; B_p,Rd = ${(BpRd / 1e3).toFixed(1)} kN` });
+      // cisaillement + torsion (vectoriel)
+      const Ip = Iz + Iy;
+      const fv = G.bolts.map((q) => { const fy = L.Vy / n - (Ip > 0 ? L.Mx * q.z / Ip : 0), fz = L.Vz / n + (Ip > 0 ? L.Mx * q.y / Ip : 0); return { fy, fz, f: Math.hypot(fy, fz) }; });
+      R.fv = fv;
+      const iv = fv.reduce((a, f, i) => (f.f > fv[a].f ? i : a), 0);
+      add('bolts', 'v', 'Boulons — cisaillement (V_y, V_z et torsion M_x)', '3.6.1 tab. 3.4', fv[iv].f, FvRd);
+      let worst = 0; G.bolts.forEach((q, i) => { worst = Math.max(worst, fv[i].f / FvRd + R.FtBolt[i] / (1.4 * FtRd)); });
+      add('bolts', 'vt', 'Boulons — cisaillement + traction', 'tab. 3.4', worst, 1, { ratioOnly: true });
+      const bb = bearing(d, d0, tp, fup, bc.fub, gam.M2, { eEnd: G.e, pAlong: BIG, nAlong: 1, eEdge: G.e, pPerp: BIG, nPerp: 1 });
+      add('plate', 'b', `Platine — pression diamétrale (t = ${tp} mm, pinces e = ${G.e} mm)`, '3.6.1 tab. 3.4', fv[iv].f, bb.Fb);
+      // soudure périphérique : effort de membrane maximal par unité de longueur
+      let qN, qV, Lw;
+      if (S.type === 'CHS') {
+        const r = S.d / 2; Lw = 2 * PI * r;
+        qN = Math.max(0, -L.N) / Lw + Math.hypot(L.My, L.Mz) / (PI * r * r);
+        qV = 2 * Math.hypot(L.Vy, L.Vz) / Lw + Math.abs(L.Mx) / (2 * PI * r * r);
+      } else {
+        Lw = 2 * (S.h + S.b);
+        const Wy = S.h * S.b + S.h * S.h / 3, Wz = S.h * S.b + S.b * S.b / 3;   // modules de flexion d'un contour linéique
+        qN = Math.max(0, -L.N) / Lw + Math.abs(L.My) / Wy + Math.abs(L.Mz) / Wz;
+        qV = Math.max(Math.abs(L.Vz) / (2 * S.h), Math.abs(L.Vy) / (2 * S.b)) + Math.abs(L.Mx) / (2 * S.h * S.b);
+      }
+      add('weld', 'w', `Soudure périphérique (a = ${aT} mm, L = ${Lw.toFixed(0)} mm)`, '4.5.3.3', Math.hypot(qN, qV), fw * aT, { perLen: true });
+      // paroi du tube en compression / section : la barre elle-même est hors champ
+      R.Ftb = Ftb;
+    }
+    R.max = R.checks.reduce((a, c) => Math.max(a, c.r), 0);
+    R.gov = R.checks.reduce((a, c) => (!a || c.r > a.r ? c : a), null);
+    if (R.warnings.some((w) => /incomplète/.test(w))) R.partial = true;
+    return R;
+  }
+
+  function computeEnv(s) {
+    const n = Array.isArray(s.loads) && s.loads.length ? s.loads.length : 1;
+    const runs = []; for (let i = 0; i < n; i++) runs.push(compute(s, i));
+    const rows = [], idx = {};
+    runs.forEach((r, i) => (r.checks || []).forEach((c) => {
+      const key = c.grp + '|' + c.id;
+      if (!(key in idx)) { idx[key] = rows.length; rows.push(Object.assign({}, c, { idx: i, name: r.loadName })); }
+      else if (c.r > rows[idx[key]].r) rows[idx[key]] = Object.assign({}, c, { idx: i, name: r.loadName });
+    }));
+    const order = { bolts: 0, plate: 1, beam: 2, weld: 3 };
+    rows.sort((a, b) => order[a.grp] - order[b.grp]);
+    const max = rows.reduce((a, c) => Math.max(a, c.r), 0);
+    const gov = rows.reduce((a, c) => (!a || c.r > a.r ? c : a), null);
+    return { runs, rows, max, gov, govIdx: gov ? gov.idx : 0, valid: runs.every((r) => r.valid), partial: runs.some((r) => r.partial), perLoad: runs.map((r) => r.max) };
+  }
+
+  function summary(st) {
+    try {
+      const E = computeEnv(st), r = E.runs[0];
+      return { type: 'Platines d\'about', sec: r.S ? `${r.S.name} · ${r.geo ? r.geo.bolts.length : '?'} M${r.bolt.d} ${r.bolt.cls}` : '—', gov: E.gov ? E.gov.label.replace(/\s*\(.*$/, '') : '', max: E.valid ? E.max : null };
+    } catch (e) { return null; }
+  }
+
+  window.FirmitasEPCalc = { compute, computeEnv, defaultState, upgrade, summary, tstub, memberOf, DM };
+})();

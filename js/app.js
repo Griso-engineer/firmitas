@@ -482,7 +482,7 @@
   const modOf = (kind) => MODS()[kind];
   const isSplice = (it) => kindOf(it) !== 'beam';
   function summaryOf(st) {
-    if (st && st.kind && modOf(st.kind)) return modOf(st.kind).api.summary(st);
+    if (st && st.kind && modOf(st.kind)) { const m = modOf(st.kind); return m.api.summary(m.upgrade(JSON.parse(JSON.stringify(st)))); }
     try {
       const r = E.compute(st);
       return { type: 'Poutre', sec: r.S ? `${r.S.name} ${r.grade} · L = ${fmt(+st.L, 2)} m` : '—', gov: r.sls.max > (r.env ? r.env.max : 0) ? 'ELS — flèche' : (r.env && r.env.worst && r.env.worst.gov ? E.CRITERIA[r.env.worst.gov].label : ''), max: r.valid ? r.max : null };

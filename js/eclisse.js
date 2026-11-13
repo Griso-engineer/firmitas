@@ -349,7 +349,7 @@
     const P = g.parts;
     const kr = (x) => (Number.isFinite(x) ? fmt(x, 2) : '∞');
     const full = E.MjRd != null && E.MjRd >= E.Mpl;
-    box.innerHTML = `<div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+    box.innerHTML = `<div class="kpis k3">
         <div class="kpi ${g.cls === 'rigide' ? 'hero' : ''}"><b>Rigidité initiale</b><span>${fmt(Sj, 1)}</span><small>MN·m/rad — assemblage <b>${g.cls}</b> (5.2.2.5)</small></div>
         <div class="kpi"><b>Limite « rigide »</b><span>${fmt(rl, 1)}</span><small>k<sub>b</sub>·E·I<sub>b</sub>/L<sub>b</sub>, k<sub>b</sub> = ${g.kb} (${g.kb === 8 ? 'ossature contreventée' : 'non contreventée'})</small></div>
         <div class="kpi ${full ? 'hero' : ''}"><b>Résistance M<sub>j,Rd</sub></b><span>${E.MjRd != null ? fmt(E.MjRd, 0) : '—'}</span><small>kN·m pour M<sub>y</sub> seul · M<sub>pl,Rd</sub> poutre = ${fmt(E.Mpl, 0)} kN·m → ${full ? 'pleine résistance' : 'résistance partielle'}${E.govM ? ' · gouverné par : ' + sub(E.govM.label.replace(/\s*\(.*$/, '')) : ''}</small></div>
@@ -378,7 +378,7 @@
     const contrib = C.COMPS.map((c) => `<tr${view === c.id ? ' class="gov"' : ''}><td>${sub(c.label)}</td>${['top', 'web', 'bot'].map((g) => { const G = R.groups[g], f = G.loads[c.id][G.imax]; return `<td class="num">${f.f < 1 ? '·' : kN(f.fx)}</td><td class="num">${f.f < 1 ? '·' : kN(f.ft)}</td>`; }).join('')}</tr>`).join('');
     const keepOpen = !box.querySelector('details') || box.querySelector('details').open;
     box.innerHTML = `<details class="fold" style="margin-top:0;margin-bottom:18px"${keepOpen ? ' open' : ''}><summary>Géométrie cotée de l'assemblage</summary>${geoFigs(R)}</details>
-      <div style="display:grid;gap:22px">
+      <div style="display:grid;gap:22px;grid-template-columns:minmax(0,1fr)">
         <div style="max-width:760px">${endView(view)}</div>
         <div>
           <div class="sub-title" style="margin-top:0">Répartition entre les plats [kN, kN·m]</div>
@@ -421,7 +421,7 @@
       </div>
       ${(() => {
         const pr = partRates(E.rows), rates = Object.fromEntries(Object.entries(pr).map(([k, v]) => [k, v.r]));
-        return `<div class="fig-grid" style="margin-top:18px;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)">
+        return `<div class="fig-grid split" style="margin-top:18px">
           <div class="fig">${DR.rateMap(R, rates)}</div>
           <div><div class="sub-title" style="margin-top:4px">Taux par pièce</div><div class="rate-legend" style="grid-template-columns:1fr">
             ${PARTS.map(([id]) => `<div><i style="background:${DR.rateCol(pr[id].r)}"></i><span>${pr[id].label}<br><small class="muted">${sub((pr[id].gov.label || '—').replace(/\s*\(.*$/, ''))}</small></span><b>${pct(pr[id].r)}</b></div>`).join('')}

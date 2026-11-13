@@ -27,6 +27,13 @@ prédimensionnement d'une travée) ; les anomalies relevées et corrigées sont 
   diamétrale par pli, joints longs, rupture en bloc, fourrures β_p) et vérification des plats ; torseurs multiples
   avec enveloppe ; vues cotées (élévation, plans, coupe) et 3D ; vue 3D du torseur avec exemple de convention ;
   carte des taux par pièce ; raideur S_j,ini (méthode des composantes) et classification, M_j,Rd.
+- **Plat soudé** (onglet *Plat soudé*) : extrémité de poutre en I boulonnée sur un plat soudé à la poutre support
+  (support et soudure hors vérification) ; boulons sous V excentré et N, pression diamétrale plat et âme, cisaillement
+  brut et net, rupture en bloc, flexion du plat, traction ; recommandations de ductilité du guide SCI P358.
+- **Platines d'about** (onglet *Platines*) : profils I/H (méthode des composantes § 6.2 : tronçons en T, âme tendue,
+  semelle comprimée, M_j,Rd, interaction N–M) et tubes RHS/SHS/CHS (tractions élastiques par boulon, tronçon en T et
+  paroi) ; cisaillement + traction, poinçonnement, soudures (méthode simplifiée).
+- Vues 3D par tampon de profondeur (`js/r3d.js`) : parties cachées exactes, boulons complets.
 - **Fiche NDC** (PDF, Word) et **projets** (localStorage, export / import .json).
 
 ## Lancer en local
@@ -53,4 +60,7 @@ powershell -ExecutionPolicy Bypass -File serve.ps1
 | `js/eclisse-calc.js` | Moteur de l'éclisse (`FirmitasSpliceCalc.compute`) |
 | `js/eclisse.js` | Interface, schémas et fiche NDC de l'éclisse |
 | `js/eclisse-draw.js` | Vues cotées, 3D axonométrique, torseur 3D, carte des taux |
+| `js/r3d.js` | Rendu 3D à tampon de profondeur (boîtes, prismes) |
+| `js/platsoude-calc.js`, `js/platsoude.js` | Attache par plat soudé : moteur, interface, dessins, NDC |
+| `js/platines-calc.js`, `js/platines.js` | Platines d'about : moteur, interface, dessins, NDC |
 | `js/xl-ref.js` | Valeurs tabulées du classeur, pour `tests.html` uniquement |

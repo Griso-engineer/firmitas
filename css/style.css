@@ -347,3 +347,8 @@ ol.audit li b.sev.l { background: var(--paper-2); }
 .rate-legend div { display: flex; gap: 8px; align-items: center; border-bottom: 1px solid var(--line); padding: 3px 0; }
 .rate-legend i { width: 14px; height: 14px; flex: none; border: 1px solid var(--ink); }
 .rate-legend b { margin-left: auto; font-variant-numeric: tabular-nums; }
+.fig-grid.split { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
+.kpis.k3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.tq-grid.tq2 { grid-template-columns: minmax(190px, .8fr) minmax(0, 1fr); }
+@media (max-width: 880px) { .fig-grid.split { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 680px) { .kpis.k3, .tq-grid.tq2 { grid-template-columns: minmax(0, 1fr); } }

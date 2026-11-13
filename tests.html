@@ -23,6 +23,7 @@
 <script src="js/xl-ref.js"></script>
 <script src="js/eclisse-calc.js"></script>
 <script src="js/platsoude-calc.js"></script>
+<script src="js/platines-calc.js"></script>
 <script>
 (function () {
   const E = FirmitasEC3, ST = FirmitasStore, D = FIRMITAS_DATA, G = FirmitasGeom, X = FIRMITAS_XLREF;
@@ -206,6 +207,27 @@
   fsS.loads[0] = { name: 'T', V: 0, N: 100 }; fr = FC.compute(fsS);
   check('N = 100 kN seul : effort par boulon = N/4 [kN]', fr.forces[0].f / 1e3, 25);
   check('Âme : traction nette 0,9·(h_w − 4·d_0)·t_w·f_u/γ_M2 [kN]', byId(fr, 'web', 'wt').Rd / 1e3, 0.9 * (360 - 2 * 12.7 - 88) * 8 * 490 / 1.25 / 1e3);
+
+  // ------------------------------------------------------------------
+  // F. Platines d'about — calculs manuels
+  // ------------------------------------------------------------------
+  title('F · Platines d\'about — tronçon en T, HE 300 A / platines 25 mm / M22 10.9, SHS 200 × 10');
+  const EPC = FirmitasEPCalc;
+  const tsx = EPC.tstub(200, 200, 40, 50, 20, 355, 1, 400e3);
+  check('Tronçon en T : F_T,1 = 4·M_pl/m (l_eff = 200, t = 20, m = 40) [kN]', tsx.F1 / 1e3, 4 * 0.25 * 200 * 400 * 355 / 40 / 1e3);
+  check('… F_T,2 = (2·M_pl + n·ΣF_t,Rd)/(m + n) [kN]', tsx.F2 / 1e3, (2 * 0.25 * 200 * 400 * 355 + 50 * 400e3) / 90 / 1e3);
+  check('… mode 2 déterminant', tsx.mode, 2);
+  let eps = EPC.defaultState(), er3 = EPC.compute(eps);
+  check('M22 10.9 : F_t,Rd = 0,9·1000·303/1,25 [kN]', er3.bolt.FtRd / 1e3, 0.9 * 1000 * 303 / 1.25 / 1e3);
+  check('M22, platine 25 mm : B_p,Rd = 0,6·π·d_m·t_p·f_u/γ_M2 (d_m = 34,5) [kN]', er3.bolt.BpRd / 1e3, 0.6 * Math.PI * 34.5 * 25 * 490 / 1.25 / 1e3);
+  const extR = er3.Mres.bot.rows[0], mx_ = 45 - 0.8 * 8 * Math.SQRT2;
+  check('Rangée débordante : l_eff,nc = min(4m_x + 1,25e_x ; e + 2m_x + 0,625e_x ; 0,5b_p ; …) = 150 mm', extR.cap.nc, Math.min(4 * mx_ + 50, 75 + 2 * mx_ + 25, 150, 75 + 2 * mx_ + 25));
+  check('Rangée débordante : h_r = (h/2 − t_f/2) + h/2 + m_x [mm]', extR.h, 145 - 7 + 145 + 45);
+  const r2_ = er3.Mres.bot.rows[1];
+  check('Règle 6.2.7.2 (9) : F_t,2,Rd ≤ F_t,1,Rd·h_2/h_1 (rangée 1 > 1,9·F_t,Rd)', r2_.F / 1e3, Math.min(r2_.cap.F, extR.F * r2_.h / extR.h) / 1e3);
+  check('M_j,Rd = Σ h_r·F_t,r,Rd [kN·m]', er3.MjRd / 1e6, er3.Mres.bot.rows.reduce((a, q) => a + q.F * q.h, 0) / 1e6);
+  eps = EPC.defaultState(); eps.shape = 'rhs'; eps.loads = [{ name: 'T', N: -200, Vy: 0, Vz: 0, Mx: 0, My: 30, Mz: 5 }]; er3 = EPC.compute(eps);
+  check('SHS, 8 boulons : F_t = 200/8 + M_y·140/Σz² + M_z·50/Σy² [kN]', Math.max(...er3.FtBolt) / 1e3, (25e3 + 30e6 * 140 / 88400 + 5e6 * 50 / 88400) / 1e3);
 
   const lib = []; let nLib = 0, nBad = 0;
   const props = [['A', 6], ['Iy', 7], ['Wely', 8], ['Wply', 9], ['Avz', 10], ['Iz', 11], ['Welz', 12], ['Wplz', 13], ['It', 14]];

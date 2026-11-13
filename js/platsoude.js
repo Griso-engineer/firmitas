@@ -246,7 +246,7 @@
       <p class="note">h<sub>p</sub> = 2·e<sub>1</sub> + (n<sub>1</sub> − 1)·p<sub>1</sub> ; b<sub>p</sub> = g + e<sub>2,b</sub> + (n<sub>2</sub> − 1)·p<sub>2</sub> + e<sub>2</sub> ; excentrement z = g + e<sub>2,b</sub> + (n<sub>2</sub> − 1)·p<sub>2</sub>/2 (face d'appui → centre du groupe).</p>
       <div id="fGeo" style="margin-top:12px"></div>
       ${blockHead('04', 'Torseurs ELU', 'Un torseur par combinaison : effort tranchant d\'appui V et effort normal N (chaînage). L\'enveloppe est vérifiée.')}
-      <div class="tq-grid" style="grid-template-columns:minmax(190px,.8fr) minmax(0,1fr)">
+      <div class="tq-grid tq2">
         <div class="fields" style="grid-template-columns:1fr">
           ${st.loads.length > 1 ? `<div class="chips">${st.loads.map((x, j) => `<button type="button" class="chip${j === i0 ? ' on' : ''}" data-fact="cur" data-i="${j}">${esc(x.name || 'T' + (j + 1))}</button>`).join('')}</div>` : ''}
           ${field('Torseur', `<input type="text" data-fp="loads.${i0}.name" value="${esc(L.name)}">`)}
@@ -309,7 +309,7 @@
         ${kpi('Boulons', pr.b)}${kpi('Plat soudé', pr.p)}${kpi('Âme de la poutre', pr.w)}
         <div class="kpi"><b>V<sub>Rd</sub> de l'attache</b><span>${E.VRd != null ? fmt(E.VRd, 0) : '—'}</span><small>kN, pour V seul (N = 0)</small></div>
       </div>
-      <div class="fig-grid" style="margin-top:18px;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)">
+      <div class="fig-grid split" style="margin-top:18px">
         <div class="fig">${iso(R, { colorOf: (id) => DR.rateCol(rates[id]), title: 'Taux d\'utilisation par pièce', sub: 'vert : faible · orange : proche de 1 · rouge : > 100 % — enveloppe' })}</div>
         <div><div class="sub-title" style="margin-top:4px">Taux par pièce</div><div class="rate-legend" style="grid-template-columns:1fr">
           ${PARTS.map(([id]) => `<div><i style="background:${DR.rateCol(pr[id].r)}"></i><span>${pr[id].label}<br><small class="muted">${sub((pr[id].gov.label || '—').replace(/\s*\(.*$/, ''))}</small></span><b>${pct(pr[id].r)}</b></div>`).join('')}
