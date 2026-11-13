@@ -16,7 +16,8 @@
   const kN = (x) => fmt(x / 1e3, 1), kNm = (x) => fmt(x / 1e6, 2);
   const ACC = '#8b9d99', RED = '#fa554f', INK = '#111110', BEAM = '#d9dee6';
 
-  let st = null, R = null, dirty = false, view = 'tot', db = null, common = false;
+  let st = null, R = null, ENV = null, dirty = false, view = 'tot', db = null, common = false;
+  const curLoad = () => st.loads[Math.min(st.loads.length - 1, +st.cur || 0)];
   const get = (p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), st);
   function set(p, v) { const ks = p.split('.'); let a = st; ks.slice(0, -1).forEach((k) => { if (a[k] == null) a[k] = {}; a = a[k]; }); a[ks[ks.length - 1]] = v; }
 
@@ -166,7 +167,8 @@
     const plateBlock = (k, lbl) => `<div><div class="sub-title">${lbl}</div>
       <div style="margin-bottom:10px">${chk(k + '.double', 'Plat dédoublé : plat extérieur + 2 plats intérieurs (double recouvrement)', true)}</div>
       <div class="fields">${field('Plat extérieur b<sub>o</sub>', inp(k + '.bo'), 'mm')}${field('t<sub>o</sub>', inp(k + '.to'), 'mm')}
-      ${st[k].double ? field('Plats intérieurs b<sub>i</sub>', inp(k + '.bi'), 'mm', 'Chacun, posés contre le congé') + field('t<sub>i</sub>', inp(k + '.ti'), 'mm') : ''}</div></div>`;
+      ${st[k].double ? field('Plats intérieurs b<sub>i</sub>', inp(k + '.bi'), 'mm', 'Chacun, posés contre le congé') + field('t<sub>i</sub>', inp(k + '.ti'), 'mm') : ''}
+      ${field('Fourrure t<sub>p</sub>', inp(k + '.pack'), 'mm', 'Profils de hauteurs différentes : β<sub>p</sub> si t<sub>p</sub> &gt; d/3 (3.6.1 (12))')}</div></div>`;
     const { p } = A().crumbK('eclisse');
     app.innerHTML = `<div class="page">
       <div class="actionbar">
@@ -229,14 +231,23 @@
       </div>
       <div class="cols2" style="margin-top:6px">${plateBlock('top', 'Plats de la semelle supérieure')}${plateBlock('bot', 'Plats de la semelle inférieure')}</div>
 
-      ${blockHead('04', 'Torseur ELU', "Sollicitations de calcul à la section du joint. N &gt; 0 : compression ; M<sub>y</sub> &gt; 0 comprime la semelle supérieure ; M<sub>z</sub> &gt; 0 comprime le côté +y ; M<sub>x</sub> : torsion.")}
+      ${blockHead('04', 'Torseurs ELU', "Un torseur par combinaison à vérifier (M<sub>max</sub>, V<sub>max</sub>, N<sub>max</sub> concomitants…), à la section du joint. N &gt; 0 : compression ; M<sub>y</sub> &gt; 0 comprime la semelle supérieure ; M<sub>z</sub> &gt; 0 comprime le côté +y ; M<sub>x</sub> : torsion. Un bloc copié depuis Excel ou RFEM se colle dans le tableau.")}
+      <div class="tbl-wrap"><table class="grid" id="sLoads">
+        <thead><tr><th class="rowh">Torseur</th>${C.COMPS.map((x) => `<th>${sub(x.label)} [${x.unit}]</th>`).join('')}<th>Taux</th><th>Affiché</th><th></th></tr></thead>
+        <tbody>${st.loads.map((L, i) => `<tr><td><input type="text" data-sp="loads.${i}.name" value="${esc(L.name)}" style="min-width:150px;text-align:left"></td>
+          ${C.COMPS.map((x, j) => `<td><input type="number" step="any" data-sp="loads.${i}.${x.id}" data-lr="${i}" data-lc="${j}" value="${esc(L[x.id])}"></td>`).join('')}
+          <td class="ro" id="sRate${i}"></td>
+          <td style="text-align:center"><input type="radio" name="sCur" data-sact="cur" data-i="${i}"${(+st.cur || 0) === i ? ' checked' : ''}></td>
+          <td>${st.loads.length > 1 ? `<button class="btn sm ghost" data-sact="delLoad" data-i="${i}" title="Supprimer">✕</button>` : ''}</td></tr>`).join('')}</tbody>
+      </table></div>
+      <div style="display:flex;gap:8px;margin:8px 0 14px;flex-wrap:wrap"><button class="btn sm" data-sact="addLoad">+ Ajouter un torseur</button></div>
       <div class="fields">
-        ${C.COMPS.map((x) => field(sub(x.label) + ' <span class="u">— ' + x.title.toLowerCase() + '</span>', inp('load.' + x.id), x.unit)).join('')}
-        ${field('Partage de M<sub>y</sub>', sel('myShare', [['inertie', 'Âme selon sa part d\'inertie'], ['semelles', 'Semelles seules']]))}
+        ${field('Partage de M<sub>y</sub>', sel('myShare', [['inertie', 'Âme selon sa part d\'inertie (a)'], ['semelles', 'Semelles seules (b)']]))}
       </div>
       <p class="note">Répartition : N au prorata des aires (semelles b·t<sub>f</sub>, âme le reste) ; M<sub>y</sub> par un couple dans les semelles (bras h − t<sub>f</sub>) et, au choix, la part d'inertie de l'âme dans les plats d'âme ; V<sub>z</sub> par l'âme ; V<sub>y</sub> et M<sub>z</sub> pour moitié par chaque semelle ; M<sub>x</sub> par un couple d'efforts transversaux opposés dans les semelles (torsion gênée, sécuritaire pour les boulons de semelles). Chaque groupe reprend en plus le moment de l'excentrement entre l'axe du joint et son centre.</p>
 
       ${blockHead('05', 'Cheminement des efforts', "Choisir une composante du torseur, ou le torseur complet : répartition entre les plats au droit du joint, puis efforts dans chaque boulon (vecteurs à l'échelle de chaque groupe, ou à une échelle commune pour comparer les groupes).")}
+      <div class="chips" id="sCurChips" style="margin-bottom:10px"></div>
       <div class="chips" id="sViews">${C.COMPS.map((x) => [x.id, sub(x.label)]).concat([['tot', 'Torseur complet']]).map(([k, l]) => `<button type="button" class="chip${view === k ? ' on' : ''}" data-sact="view" data-v="${k}">${l}</button>`).join('')}</div>
       <div id="sFlow" style="margin-top:16px"></div>
 
@@ -247,9 +258,12 @@
   }
 
   function refresh() {
-    R = C.compute(st);
+    R = C.compute(st); ENV = C.computeEnv(st);
     const v = $('#sVerdict');
-    if (v) v.innerHTML = !R.valid ? '<span class="verdict ko">— <small>données invalides</small></span>' : `<span class="verdict ${R.max <= 1 ? 'ok' : 'ko'}">${pct(R.max)} <small>${R.max <= 1 ? 'vérifié*' : 'non vérifié'}</small></span>`;
+    if (v) v.innerHTML = !R.valid ? '<span class="verdict ko">— <small>données invalides</small></span>' : `<span class="verdict ${ENV.max <= 1 ? 'ok' : 'ko'}">${pct(ENV.max)} <small>${ENV.max <= 1 ? 'vérifié*' : 'non vérifié'}</small></span>`;
+    ENV.perLoad.forEach((m, i) => { const c = $('#sRate' + i); if (c) c.innerHTML = `<b style="color:${m > 1 ? 'var(--c-red)' : 'inherit'}">${pct(m)}</b>${i === ENV.govIdx ? ' ◂' : ''}`; });
+    const cc = $('#sCurChips');
+    if (cc) cc.innerHTML = '<span class="muted" style="font-size:12.5px;align-self:center;margin-right:10px">Torseur affiché :</span>' + st.loads.map((L, i) => `<button type="button" class="chip${(+st.cur || 0) === i ? ' on' : ''}" data-sact="cur" data-i="${i}">${esc(L.name || 'Torseur ' + (i + 1))}${i === ENV.govIdx ? ' · dimensionnant' : ''}</button>`).join('');
     const dd = $('#sDirty'); if (dd) dd.textContent = dirty ? 'modifié · non enregistré' : '';
     const cn = $('#sCrumb'); if (cn) cn.textContent = st.name || 'Sans nom';
     if (!R.valid) { ['#sFlow', '#sResults'].forEach((x) => { const e = $(x); if (e) e.innerHTML = R.warnings.map((w) => `<p class="note warn">${sub(w)}</p>`).join(''); }); return; }
@@ -280,7 +294,7 @@
           <div class="tbl-wrap"><table class="tbl compact"><thead>
             <tr><th colspan="2"></th><th colspan="3" style="text-align:center">Semelle sup.</th><th colspan="3" style="text-align:center">Âme</th><th colspan="3" style="text-align:center">Semelle inf.</th></tr>
             <tr><th>Comp.</th><th class="num">Valeur</th>${['F<sub>x</sub>', 'F<sub>y</sub>', 'M<sub>z</sub>', 'F<sub>x</sub>', 'F<sub>z</sub>', 'M<sub>y</sub>', 'F<sub>x</sub>', 'F<sub>y</sub>', 'M<sub>z</sub>'].map((x) => `<th class="num">${x}</th>`).join('')}</tr></thead><tbody>
-            ${C.COMPS.map((c) => row(sub(c.label), fmtG(C.num(st.load[c.id]), 2) + ' ' + c.unit, per[c.id], view === c.id)).join('')}
+            ${C.COMPS.map((c) => row(sub(c.label), fmtG(C.num(curLoad()[c.id]), 2) + ' ' + c.unit, per[c.id], view === c.id)).join('')}
             ${row('<b>Total</b>', '', tot, view === 'tot')}
           </tbody></table></div>
           <p class="note">F<sub>x</sub> &gt; 0 : compression transmise par les plats. M : moment dans le plan du groupe, à l'axe du joint (avant ajout de l'excentrement).</p>
@@ -300,26 +314,31 @@
   function renderResults() {
     const box = $('#sResults'); if (!box) return;
     const cats = { bolt: (c) => /^(v|s|b_)/.test(c.id) && !/^b_beam/.test(c.id), plate: (c) => /^p/.test(c.id), beam: (c) => /^(b_beam|bbt|bnet)/.test(c.id) };
-    const mx = (f) => R.checks.filter(f).reduce((a, c) => (c.r > a.r ? c : a), { r: 0, label: '' });
-    const kpi = (t, o) => `<div class="kpi${o.r > 1 ? ' bad' : ''}"><b>${t}</b><span>${pct(o.r)}</span><small>${sub(o.label || '—')}</small></div>`;
-    const ok = R.max <= 1;
-    const rows = (g) => R.checks.filter((c) => c.grp === g).map((c) => `<tr${R.gov === c ? ' class="gov"' : ''}><td>${sub(c.label)}${c.note ? `<div class="f" style="font-size:11px">${sub(c.note)}</div>` : ''}</td><td class="f">${c.ref}</td><td class="num">${c.ratioOnly ? '—' : kN(c.Ed)}</td><td class="num">${c.ratioOnly ? '—' : kN(c.Rd)}</td><td class="num"><span class="ratio">${pct(c.r)}</span></td><td style="width:100px">${bar(c.r)}</td><td>${pill(c.r)}</td></tr>`).join('');
-    box.innerHTML = `${R.warnings.map((w) => `<p class="note warn">${sub(w)}</p>`).join('')}
+    const E = ENV, multi = st.loads.length > 1;
+    const mx = (f) => E.rows.filter(f).reduce((a, c) => (c.r > a.r ? c : a), { r: 0, label: '' });
+    const kpi = (t, o) => `<div class="kpi${o.r > 1 ? ' bad' : ''}"><b>${t}</b><span>${pct(o.r)}</span><small>${sub((o.label || '—').replace(/\s*\(.*$/, ''))}${multi && o.name ? ' · ' + esc(o.name) : ''}</small></div>`;
+    const ok = E.max <= 1;
+    const rows = (g) => E.rows.filter((c) => c.grp === g).map((c) => `<tr${E.gov === c ? ' class="gov"' : ''}><td>${sub(c.label)}${c.note ? `<div class="f" style="font-size:11px">${sub(c.note)}</div>` : ''}</td><td class="f">${c.ref}</td>${multi ? `<td class="f">${esc(c.name)}</td>` : ''}<td class="num">${c.ratioOnly ? '—' : kN(c.Ed)}</td><td class="num">${c.ratioOnly ? '—' : kN(c.Rd)}</td><td class="num"><span class="ratio">${pct(c.r)}</span></td><td style="width:100px">${bar(c.r)}</td><td>${pill(c.r)}</td></tr>`).join('');
+    const plast = ['top', 'web', 'bot'].map((g) => `${C.GROUPS.find((x) => x.id === g).label.toLowerCase()} : ${R.groups[g].plast ? 'oui' : 'non'}`).join(' ; ');
+    const warns = [...new Set(E.runs.flatMap((r) => r.warnings))];
+    box.innerHTML = `${warns.map((w) => `<p class="note warn">${sub(w)}</p>`).join('')}
+      ${(R.info || []).map((w) => `<p class="note">${sub(w)}</p>`).join('')}
       <div class="kpis">
-        <div class="kpi ${ok ? 'hero' : 'bad'}"><b>Taux maximal</b><span>${pct(R.max)}</span><small>${ok ? 'Vérifié pour les critères traités*' : 'Assemblage non vérifié'}</small></div>
+        <div class="kpi ${ok ? 'hero' : 'bad'}"><b>Taux maximal${multi ? ' (enveloppe)' : ''}</b><span>${pct(E.max)}</span><small>${ok ? 'Vérifié pour les critères traités*' : 'Assemblage non vérifié'}${multi ? ' · ' + esc(st.loads[E.govIdx].name) : ''}</small></div>
         ${kpi('Boulons', mx(cats.bolt))}${kpi('Plats', mx(cats.plate))}${kpi('Poutre au droit du joint', mx(cats.beam))}
         <div class="kpi"><b>Boulons</b><span>${R.geo.fl.pts.length * 2 + R.geo.web.pts.length}</span><small>par côté : ${R.geo.fl.pts.length} × 2 semelles + ${R.geo.web.pts.length} âme · M${R.bolt.d} ${R.bolt.cls}${R.pre ? ' HR' : ''}</small></div>
       </div>
-      <p class="note">* Critères traités : boulons (cisaillement, glissement, pression diamétrale par pli), plats (traction, compression, flexion dans le plan, cisaillement, rupture en bloc), poutre affaiblie (section nette, rupture en bloc). Hors champ : transmission par contact des abouts, voilement local, fatigue, résistance de la poutre hors du joint (onglet Vérification).</p>
-      ${['top', 'web', 'bot'].map((g) => `<div class="sub-title" style="margin-top:26px">${C.GROUPS.find((x) => x.id === g).label} <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:500">· boulon le plus chargé ${kN(R.groups[g].tot[R.groups[g].imax].f)} kN</span></div>
-        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Critère</th><th>Réf. EC3</th><th class="num">E<sub>d</sub> [kN]</th><th class="num">R<sub>d</sub> [kN]</th><th class="num">Taux</th><th></th><th></th></tr></thead><tbody>${rows(g)}</tbody></table></div>`).join('')}`;
+      <p class="note">* Critères traités : boulons (cisaillement, glissement, pression diamétrale par pli), plats (traction, compression, flexion dans le plan, cisaillement, rupture en bloc), poutre affaiblie (section nette, rupture en bloc). Hors champ : transmission par contact des abouts, voilement local, fatigue, résistance de la poutre hors du joint (onglet Vérification).${multi ? ' Chaque ligne donne le torseur le plus défavorable pour le critère (enveloppe).' : ''}</p>
+      <p class="note">Répartition élastique entre boulons retenue (3.12 (2), toujours admise). Répartition plastique admissible au sens de 3.12 (3) — catégorie C, ou F<sub>v,Rd</sub> &gt; F<sub>b,Rd</sub> : ${plast}.</p>
+      ${['top', 'web', 'bot'].map((g) => `<div class="sub-title" style="margin-top:26px">${C.GROUPS.find((x) => x.id === g).label} <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:500">· boulon le plus chargé ${kN(Math.max(...E.runs.map((r) => r.groups[g].tot[r.groups[g].imax].f)))} kN</span></div>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Critère</th><th>Réf. EC3</th>${multi ? '<th>Torseur</th>' : ''}<th class="num">E<sub>d</sub> [kN]</th><th class="num">R<sub>d</sub> [kN]</th><th class="num">Taux</th><th></th><th></th></tr></thead><tbody>${rows(g)}</tbody></table></div>`).join('')}`;
   }
 
   // ======================================================================
   //  FICHE NDC
   // ======================================================================
   function page(state, project, idx, total, opts) {
-    const keep = st, keepR = R; st = state; R = C.compute(st);
+    const keep = st, keepR = R; st = C.upgrade(JSON.parse(JSON.stringify(state))); const E = C.computeEnv(st); R = C.compute(st, E.govIdx); const multi = st.loads.length > 1; const gName = esc(st.loads[E.govIdx].name || '');
     try {
       if (!R.valid) return `<section class="rp-page"><p>${esc(state.name)} : données invalides.</p></section>`;
       const S = R.S, G = R.groups, bo = R.bolt;
@@ -332,7 +351,7 @@
       const L = R.L;
       const distRow = (lbl, Q) => `<tr><td>${lbl}</td>${['top', 'web', 'bot'].map((g) => `<td class="num">${kN(Q[g].Fx)}</td><td class="num">${kN(Q[g].Ft)}</td><td class="num">${kNm(Q[g].M)}</td>`).join('')}</tr>`;
       const sc = scaleOf('tot');
-      const chkRows = R.checks.map((c) => `<tr${R.gov === c ? ' class="gov"' : ''}><td>${C.GROUPS.find((x) => x.id === c.grp).label}</td><td>${sub(c.label)}</td><td>${c.ref}</td><td class="num">${c.ratioOnly ? '—' : kN(c.Ed)}</td><td class="num">${c.ratioOnly ? '—' : kN(c.Rd)}</td><td class="num">${pct(c.r)}</td><td>${c.r <= 1 ? '<span class="rp-ok">OK</span>' : '<span class="rp-ko">Non vérifié</span>'}</td></tr>`).join('');
+      const chkRows = E.rows.map((c) => `<tr${E.gov === c ? ' class="gov"' : ''}><td>${C.GROUPS.find((x) => x.id === c.grp).label}</td><td>${sub(c.label)}</td><td>${c.ref}</td>${multi ? `<td>${esc(c.name)}</td>` : ''}<td class="num">${c.ratioOnly ? '—' : kN(c.Ed)}</td><td class="num">${c.ratioOnly ? '—' : kN(c.Rd)}</td><td class="num">${pct(c.r)}</td><td>${c.r <= 1 ? '<span class="rp-ok">OK</span>' : '<span class="rp-ko">Non vérifié</span>'}</td></tr>`).join('');
       const p1 = `<section class="rp-page">${head('p. 1')}
         <div class="rp-title"><h1>${esc(state.name || 'Éclisse')} — éclisse de ${esc(S.name)}${total > 1 ? ` (${idx + 1}/${total})` : ''}</h1>
         <p>Couvre-joints boulonnés de semelles et d'âme · boulons M${bo.d} ${bo.cls}${R.pre ? ` précontraints, catégorie ${R.cat}` : ', catégorie A'} · NF EN 1993-1-8 et NF EN 1993-1-1 avec annexes nationales françaises</p></div>
@@ -346,9 +365,9 @@
           ${kv('Boulon', `d₀ = ${bo.d0} mm, A<sub>s</sub> = ${bo.As} mm², F<sub>v,Rd</sub> = ${kN(bo.FvPlane)} kN/plan${bo.threads ? ' (filetage dans le plan)' : ''}`)}
           ${kv('Coefficients', `γ<sub>M0</sub> = ${fmt(R.gam.M0, 2)}, γ<sub>M2</sub> = ${fmt(R.gam.M2, 2)}${R.pre ? `, μ = ${fmt(bo.mu, 1)}, k<sub>s</sub> = ${fmt(bo.ks, 2)}, F<sub>p,C</sub> = ${kN(bo.FpC)} kN` : ''}`)}
         </div>
-        ${H2('Torseur ELU au droit du joint')}
-        <table><thead><tr>${C.COMPS.map((c) => `<th class="num">${sub(c.label)} [${c.unit}]</th>`).join('')}</tr></thead><tbody><tr>${C.COMPS.map((c) => `<td class="num">${fmtG(C.num(state.load[c.id]), 2)}</td>`).join('')}</tr></tbody></table>
-        ${H2('Répartition entre les plats')}
+        ${H2(multi ? 'Torseurs ELU au droit du joint' : 'Torseur ELU au droit du joint')}
+        <table><thead><tr><th>Torseur</th>${C.COMPS.map((c) => `<th class="num">${sub(c.label)} [${c.unit}]</th>`).join('')}<th class="num">Taux</th></tr></thead><tbody>${st.loads.map((L, i) => `<tr${i === E.govIdx ? ' class="gov"' : ''}><td>${esc(L.name)}</td>${C.COMPS.map((c) => `<td class="num">${fmtG(C.num(L[c.id]), 2)}</td>`).join('')}<td class="num">${pct(E.perLoad[i])}</td></tr>`).join('')}</tbody></table>
+        ${H2('Répartition entre les plats' + (multi ? ' — torseur dimensionnant « ' + gName + ' »' : ''))}
         <div class="rp-fig">${endView('tot', 520, 300)}</div>
         <table><thead><tr><th></th><th colspan="3">Semelle sup.</th><th colspan="3">Âme</th><th colspan="3">Semelle inf.</th></tr>
           <tr><th>[kN, kN·m]</th>${['F<sub>x</sub>', 'F<sub>y</sub>', 'M<sub>z</sub>', 'F<sub>x</sub>', 'F<sub>z</sub>', 'M<sub>y</sub>', 'F<sub>x</sub>', 'F<sub>y</sub>', 'M<sub>z</sub>'].map((x) => `<th class="num">${x}</th>`).join('')}</tr></thead><tbody>
@@ -357,16 +376,16 @@
         <p style="font-size:7.6pt;color:#555">N au prorata des aires ; M<sub>y</sub> : couple dans les semelles (bras ${fmtG(R.dist.hf, 1)} mm)${R.dist.eta > 0 ? `, part d'inertie de l'âme ${fmt(R.dist.eta * 100, 1)} %` : ', âme non sollicitée'} ; V<sub>z</sub> par l'âme ; V<sub>y</sub>, M<sub>z</sub> pour moitié par semelle ; M<sub>x</sub> par un couple transversal dans les semelles. F<sub>x</sub> &gt; 0 : compression.</p>
       </section>`;
       const p2 = `<section class="rp-page">${head('p. 2')}
-        ${H2('Efforts dans les boulons — torseur complet')}
+        ${H2('Efforts dans les boulons — ' + (multi ? 'torseur « ' + gName + ' »' : 'torseur complet'))}
         ${['top', 'web', 'bot'].map((g) => groupPanel(g, 'tot', sc, 560, 200).svg).join('')}
         <p style="font-size:7.6pt;color:#555">Répartition élastique f = F/n + M<sub>c</sub>·r/Σr², M<sub>c</sub> incluant l'excentrement jusqu'au centre du groupe. Boulon le plus chargé : semelle sup. ${kN(G.top.tot[G.top.imax].f)} kN, âme ${kN(G.web.tot[G.web.imax].f)} kN, semelle inf. ${kN(G.bot.tot[G.bot.imax].f)} kN.</p>
       </section>`;
       const p3 = `<section class="rp-page">${head('p. 3')}
         ${H2('Vérifications')}
-        <table><thead><tr><th>Partie</th><th>Critère</th><th>Réf. EC3</th><th class="num">E<sub>d</sub> [kN]</th><th class="num">R<sub>d</sub> [kN]</th><th class="num">Taux</th><th>Statut</th></tr></thead><tbody>${chkRows}</tbody></table>
-        ${R.warnings.length ? `<p style="font-size:7.8pt"><b>Remarques :</b> ${R.warnings.map(sub).join(' ')}</p>` : ''}
-        <div class="rp-concl"><span>Conclusion — éclisse de ${esc(S.name)}, boulons M${bo.d} ${bo.cls}${R.pre ? ' HR' : ''}</span><b class="${R.max <= 1 ? 'rp-ok' : 'rp-ko'}">${R.max <= 1 ? 'Vérifiée' : 'Non vérifiée'} — taux max. ${pct(R.max)}</b></div>
-        <p style="font-size:7.4pt;color:#555;margin-top:5pt">Critères couverts : NF EN 1993-1-8 § 3.5 à 3.10 (pinces, cisaillement, pression diamétrale par pli en interaction vectorielle, glissement, joints longs, rupture en bloc), NF EN 1993-1-1 § 6.2 (plats, section nette). Pression diamétrale : k₁ et α<sub>b</sub> pris au plus défavorable (boulons d'extrémité et intérieurs confondus). Non couverts : transmission par contact des abouts, fatigue, résistance de la poutre hors du joint.</p>
+        <table><thead><tr><th>Partie</th><th>Critère</th><th>Réf. EC3</th>${multi ? '<th>Torseur</th>' : ''}<th class="num">E<sub>d</sub> [kN]</th><th class="num">R<sub>d</sub> [kN]</th><th class="num">Taux</th><th>Statut</th></tr></thead><tbody>${chkRows}</tbody></table>
+        ${(() => { const w = [...new Set(E.runs.flatMap((r) => r.warnings))].concat(R.info || []); return w.length ? `<p style="font-size:7.8pt"><b>Remarques :</b> ${w.map(sub).join(' ')}</p>` : ''; })()}
+        <div class="rp-concl"><span>Conclusion — éclisse de ${esc(S.name)}, boulons M${bo.d} ${bo.cls}${R.pre ? ' HR' : ''}</span><b class="${E.max <= 1 ? 'rp-ok' : 'rp-ko'}">${E.max <= 1 ? 'Vérifiée' : 'Non vérifiée'} — taux max. ${pct(E.max)}${multi ? ' (' + gName + ')' : ''}</b></div>
+        <p style="font-size:7.4pt;color:#555;margin-top:5pt">Critères couverts : NF EN 1993-1-8 § 3.5 à 3.10 (pinces, cisaillement, pression diamétrale par pli en interaction vectorielle, glissement, joints longs, rupture en bloc), NF EN 1993-1-1 § 6.2 (plats, section nette). Répartition élastique entre boulons (3.12 (2)). Pression diamétrale : k₁ et α<sub>b</sub> pris au plus défavorable (boulons d'extrémité et intérieurs confondus)${multi ? ' ; chaque critère est donné pour le torseur le plus défavorable' : ''}. Non couverts : transmission par contact des abouts, fatigue, résistance de la poutre hors du joint.</p>
       </section>`;
       return p1 + p2 + p3;
     } finally { st = keep; R = keepR; }
@@ -390,10 +409,27 @@
     };
     app.addEventListener('input', onEdit);
     app.addEventListener('change', onEdit);
+    // collage d'un bloc (Excel, RFEM) dans le tableau des torseurs : remplit vers la droite et vers le bas
+    app.addEventListener('paste', (e) => {
+      const t = e.target; if (!t.dataset || t.dataset.lr == null) return;
+      const txt = (e.clipboardData || window.clipboardData).getData('text');
+      if (!/[\t\n]/.test(txt)) return;
+      e.preventDefault();
+      const r0 = +t.dataset.lr, c0 = +t.dataset.lc;
+      txt.replace(/\r/g, '').split('\n').filter((l) => l.trim().length).forEach((line, i) => {
+        const r = r0 + i;
+        while (st.loads.length <= r) st.loads.push({ name: 'ELU ' + (st.loads.length + 1), N: 0, Vy: 0, Vz: 0, Mx: 0, My: 0, Mz: 0 });
+        line.split('\t').forEach((cell, j) => { const c = C.COMPS[c0 + j]; if (c) st.loads[r][c.id] = cell.trim().replace(/\s/g, '').replace(',', '.'); });
+      });
+      dirty = true; persist(); const y = window.scrollY; render(app); window.scrollTo(0, y);
+    });
     app.addEventListener('click', async (e) => {
       const b = e.target.closest('[data-sact]'); if (!b) return;
       const a = b.dataset.sact, y = window.scrollY;
       if (a === 'kind') { st.sec.kind = b.dataset.v; dirty = true; persist(); render(app); window.scrollTo(0, y); }
+      else if (a === 'cur') { st.cur = +b.dataset.i; dirty = true; persist(); document.querySelectorAll('#sLoads input[name=sCur]').forEach((r) => { r.checked = +r.dataset.i === st.cur; }); refresh(); }
+      else if (a === 'addLoad') { const L = curLoad(); st.loads.push(Object.assign({}, L, { name: 'ELU ' + (st.loads.length + 1) })); dirty = true; persist(); render(app); window.scrollTo(0, y); }
+      else if (a === 'delLoad') { st.loads.splice(+b.dataset.i, 1); st.cur = Math.min(+st.cur || 0, st.loads.length - 1); dirty = true; persist(); render(app); window.scrollTo(0, y); }
       else if (a === 'propose') { if (C.propose(st)) { dirty = true; persist(); render(app); window.scrollTo(0, y); } }
       else if (a === 'scale') { common = b.dataset.v === 'true'; renderFlow(); }
       else if (a === 'view') { view = b.dataset.v; document.querySelectorAll('#sViews .chip').forEach((c) => c.classList.toggle('on', c.dataset.v === view)); renderFlow(); }

@@ -40,13 +40,19 @@
       gam: { M0: 1, M2: 1.25, M3: 1.25, M3ser: 1.1 },
       gap: 10, myShare: 'inertie',
       fl: { n1: 3, p1: 70, e1: 40, e1b: 45, n2s: 1, w: 160, p2: 60 },
-      top: { double: true, bo: 300, to: 10, bi: 110, ti: 10 },
-      bot: { double: true, bo: 300, to: 10, bi: 110, ti: 10 },
+      top: { double: true, bo: 300, to: 10, bi: 110, ti: 10, pack: 0 },
+      bot: { double: true, bo: 300, to: 10, bi: 110, ti: 10, pack: 0 },
       web: { n1: 2, p1: 60, e1: 40, e1b: 45, n2: 3, p2: 60, hp: 190, tp: 10 },
-      load: { N: 50, Vy: 10, Vz: 150, Mx: 2, My: 250, Mz: 10 }
+      cur: 0,
+      loads: [
+        { name: 'ELU 1 — M_y max', N: 50, Vy: 10, Vz: 150, Mx: 2, My: 250, Mz: 10 },
+        { name: 'ELU 2 — V_z max', N: 20, Vy: 5, Vz: 220, Mx: 1, My: 120, Mz: 5 }
+      ]
     };
   }
   function upgrade(s) {
+    if (s.load && !Array.isArray(s.loads)) { s.loads = [Object.assign({ name: 'ELU 1' }, s.load)]; }
+    delete s.load;
     const d = defaultState();
     (function merge(dst, src) {
       Object.keys(src).forEach((k) => {
@@ -129,7 +135,9 @@
   }
 
   // ======================================================================
-  function compute(s) {
+  const loadOf = (s, idx) => { const L = Array.isArray(s.loads) && s.loads.length ? s.loads : [{}]; return L[Math.max(0, Math.min(L.length - 1, idx == null ? (+s.cur || 0) : idx))]; };
+  function compute(s, idx) {
+    const LD = loadOf(s, idx);
     const R = { valid: true, warnings: [], checks: [] };
     const S = beamOf(s); R.S = S;
     if (!S) { R.valid = false; R.warnings.push('Section invalide : profil en I à ailes parallèles ou PRS requis.'); return R; }
@@ -143,7 +151,8 @@
     const fy = D.fyOf(s.grade, S.tf, 'en10025'), fu = fuOf(s.grade, S.tf);
     R.g = g; R.gam = gam; R.cat = cat; R.pre = pre;
     R.bolt = { d, d0, As, Ab, fub: bc.fub, cls: b.cls, threads: b.threads !== false };
-    const Lk = { N: num(s.load.N) * 1e3, Vy: num(s.load.Vy) * 1e3, Vz: num(s.load.Vz) * 1e3, Mx: num(s.load.Mx) * 1e6, My: num(s.load.My) * 1e6, Mz: num(s.load.Mz) * 1e6 };
+    const Lk = { N: num(LD.N) * 1e3, Vy: num(LD.Vy) * 1e3, Vz: num(LD.Vz) * 1e3, Mx: num(LD.Mx) * 1e6, My: num(LD.My) * 1e6, Mz: num(LD.Mz) * 1e6 };
+    R.loadName = LD.name || '';
     R.L = Lk;
     const dist = distribution(S, Lk, s.myShare); R.dist = dist;
     R.mat = { fy, fu };
@@ -238,9 +247,12 @@
       const fm = G.tot[imax];
       G.imax = imax;
       // cisaillement des boulons
-      const Fv = FvPlane * G.nPl * G.bL;
+      // fourrure sous les plats de semelle (3.6.1 (12)) : β_p = 9d/(8d + 3t_p) si t_p > d/3
+      const pack = G.kind === 'flange' ? Math.max(0, num(s[k].pack)) : 0;
+      G.pack = pack; G.bp = pack > d / 3 ? Math.min(1, 9 * d / (8 * d + 3 * pack)) : 1;
+      const Fv = FvPlane * G.nPl * G.bL * G.bp;
       G.Fv = Fv;
-      if (cat !== 'C') add(k, 'v', `Boulons — cisaillement (${G.nPl} plan${G.nPl > 1 ? 's' : ''}${G.bL < 1 ? ', β_Lf = ' + G.bL.toFixed(3) : ''})`, '3.6.1 tab. 3.4', fm.f, Fv);
+      if (cat !== 'C') add(k, 'v', `Boulons — cisaillement (${G.nPl} plan${G.nPl > 1 ? 's' : ''}${G.bL < 1 ? ', β_Lf = ' + G.bL.toFixed(3) : ''}${G.bp < 1 ? ', β_p = ' + G.bp.toFixed(3) : ''})`, '3.6.1 tab. 3.4', fm.f, Fv);
       else add(k, 'v', `Boulons — cisaillement (${G.nPl} plan${G.nPl > 1 ? 's' : ''})`, '3.6.1 tab. 3.4', fm.f, Fv);
       // glissement
       if (cat !== 'A') {
@@ -321,6 +333,15 @@
         add(k, 'bnet', 'Âme de la poutre — cisaillement, section nette', '6.2.6 · 3.10.2', F.Ft, (S.Avz - G.G.n2 * d0 * S.tw) * fu / (Math.sqrt(3) * gam.M2));
       }
     });
+    // 3.12 : répartition plastique admise en catégorie C, ou si F_v,Rd > F_b,Rd (pression diamétrale déterminante)
+    ['top', 'web', 'bot'].forEach((k) => {
+      const G = groups[k];
+      const Fb = Math.min(...G.plies.map((p) => Math.min(p.bx.Fb, p.bt.Fb) / p.share));
+      G.plast = cat === 'C' || G.Fv > Fb;
+    });
+    R.info = [];
+    if (cat === 'A') R.info.push('Catégorie A : le jeu des trous permet un glissement, d’où une rotation et une flèche supplémentaires au joint. Pour une éclisse de continuité, envisager des boulons précontraints (catégorie B) ou ajustés.');
+    if (s.top.pack > 0 || s.bot.pack > 0) R.info.push('Fourrures sous les plats de semelles : réduction β_p appliquée au cisaillement des boulons au-delà de t_p = d/3 (3.6.1 (12)).');
     R.max = R.checks.reduce((a, c) => Math.max(a, c.r), 0);
     R.gov = R.checks.reduce((a, c) => (!a || c.r > a.r ? c : a), null);
     return R;
@@ -354,12 +375,29 @@
     return true;
   }
 
+  // Enveloppe sur tous les torseurs : pour chaque critère, le torseur le plus défavorable
+  function computeEnv(s) {
+    const n = Array.isArray(s.loads) && s.loads.length ? s.loads.length : 1;
+    const runs = []; for (let i = 0; i < n; i++) runs.push(compute(s, i));
+    const rows = [], idx = {};
+    runs.forEach((r, i) => (r.checks || []).forEach((c) => {
+      const key = c.grp + '|' + c.id;
+      if (!(key in idx)) { idx[key] = rows.length; rows.push(Object.assign({}, c, { idx: i, name: r.loadName })); }
+      else if (c.r > rows[idx[key]].r) rows[idx[key]] = Object.assign({}, c, { idx: i, name: r.loadName });
+    }));
+    const order = { top: 0, web: 1, bot: 2 };
+    rows.sort((a, b) => order[a.grp] - order[b.grp]);
+    const max = rows.reduce((a, c) => Math.max(a, c.r), 0);
+    const gov = rows.reduce((a, c) => (!a || c.r > a.r ? c : a), null);
+    return { runs, rows, max, gov, govIdx: gov ? gov.idx : 0, valid: runs.every((r) => r.valid), perLoad: runs.map((r) => r.max) };
+  }
+
   function summary(st) {
     try {
-      const r = compute(st);
+      const r = computeEnv(st); r.bolt = r.runs[0].bolt; r.S = r.runs[0].S; r.pre = r.runs[0].pre;
       return { type: 'Éclisse', sec: r.S ? `${r.S.name} · M${r.bolt.d} ${r.bolt.cls}${r.pre ? ' HR' : ''}` : '—', gov: r.gov ? r.gov.label.replace(/\s*\(.*$/, '') : '', max: r.valid ? r.max : null };
     } catch (e) { return null; }
   }
 
-  window.FirmitasSpliceCalc = { compute, propose, defaultState, upgrade, summary, BOLTS, CLASSES, MU, KS, COMPS, GROUPS, d0Of, fuOf, num, beamOf };
+  window.FirmitasSpliceCalc = { compute, computeEnv, propose, defaultState, upgrade, summary, BOLTS, CLASSES, MU, KS, COMPS, GROUPS, d0Of, fuOf, num, beamOf };
 })();
