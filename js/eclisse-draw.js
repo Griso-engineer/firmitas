@@ -203,119 +203,67 @@
   }
 
   // ======================================================================
-  //  3D AXONOMÉTRIQUE
+  //  3D : rendu à tampon de profondeur (js/r3d.js) — parties cachées exactes
   // ======================================================================
-  function camera(az = -32, el = 24) {
-    const a = az * Math.PI / 180, e = el * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a), ce = Math.cos(e), se = Math.sin(e);
-    return {
-      p: (x, y, z) => { const xr = x * ca - y * sa, yr = x * sa + y * ca; return { u: xr, v: -(z * ce + yr * se), d: yr * ce - z * se }; }
-    };
+  const R3D = () => window.FirmitasR3D;
+  const BOLT = '#5b5b56';
+  function triadSvg(cam, H) {
+    const o = { x: 34, y: H - 28 }, L = 25, id = 'tri' + (++uid);
+    const d = (x, y, z) => { const a = cam.p(x, y, z), b = cam.p(0, 0, 0); const n = Math.hypot(a.u - b.u, a.v - b.v) || 1; return { x: o.x + (a.u - b.u) / n * L, y: o.y + (a.v - b.v) / n * L }; };
+    return `<defs><marker id="${id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0L10,5L0,10z" fill="${INK}"/></marker></defs>` +
+      [['x', d(1, 0, 0)], ['y', d(0, 1, 0)], ['z', d(0, 0, 1)]].map(([n, p]) => `<line x1="${o.x}" y1="${o.y}" x2="${p.x.toFixed(1)}" y2="${p.y.toFixed(1)}" stroke="${INK}" stroke-width="1" marker-end="url(#${id})"/>${T(p.x + (p.x - o.x) * 0.28, p.y + (p.y - o.y) * 0.28 + 3, n, { a: 'middle', fs: 9.5, fw: 700 })}`).join('');
   }
-  const shade = (hex, f) => { const n = parseInt(hex.slice(1), 16); const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => Math.round(Math.min(255, v * f))); return '#' + c.map((v) => v.toString(16).padStart(2, '0')).join(''); };
-
-  // boîtes : { x0,x1,y0,y1,z0,z1, col, op, id }
-  function boxesOf(R, colorOf) {
+  // boulon complet : tête hexagonale, tige, écrou hexagonal. axis 'z' | 'y' ; a = face d'appui de la tête, b = face d'appui de l'écrou
+  function boltPrisms(axis, c, d, a, b, col, id) {
+    const s = Math.sign(b - a) || 1, rh = 0.87 * d;
+    return [
+      { axis, c, r: rh, a0: a - s * 0.65 * d, a1: a, n: 6, col, id },
+      { axis, c, r: d / 2, a0: a, a1: b + s * 1.25 * d, n: 10, col, id },
+      { axis, c, r: rh, a0: b, a1: b + s * 0.8 * d, n: 6, col, id }
+    ].map((p) => (p.a0 > p.a1 ? Object.assign(p, { a0: p.a1, a1: p.a0 }) : p));
+  }
+  function sceneOf(R, colorOf) {
     const S = R.S, G = R.groups, top = G.top.plate, bot = G.bot.plate, wp = G.web.plate, g = R.g;
     const { Lf, Lw, L } = lens(R);
     const ext = L + Math.max(S.h * 0.5, 120);
     const h2 = S.h / 2;
-    const B = [];
     const c = (id, def) => (colorOf ? colorOf(id) || def : def);
-    [[-ext, -g / 2, 'L'], [g / 2, ext, 'R']].forEach(([a, b]) => {
-      B.push({ x0: a, x1: b, y0: -S.b / 2, y1: S.b / 2, z0: h2 - S.tf, z1: h2, col: c('fTop', BEAM), id: 'fTop' });
-      B.push({ x0: a, x1: b, y0: -S.b / 2, y1: S.b / 2, z0: -h2, z1: -h2 + S.tf, col: c('fBot', BEAM), id: 'fBot' });
-      B.push({ x0: a, x1: b, y0: -S.tw / 2, y1: S.tw / 2, z0: -h2 + S.tf, z1: h2 - S.tf, col: c('web', BEAM), id: 'web' });
+    const boxes = [], prisms = [];
+    [[-ext, -g / 2], [g / 2, ext]].forEach(([a, b]) => {
+      boxes.push({ x0: a, x1: b, y0: -S.b / 2, y1: S.b / 2, z0: h2 - S.tf, z1: h2, col: c('fTop', BEAM) });
+      boxes.push({ x0: a, x1: b, y0: -S.b / 2, y1: S.b / 2, z0: -h2, z1: -h2 + S.tf, col: c('fBot', BEAM) });
+      boxes.push({ x0: a, x1: b, y0: -S.tw / 2, y1: S.tw / 2, z0: -h2 + S.tf, z1: h2 - S.tf, col: c('web', BEAM) });
     });
-    B.push({ x0: -Lf, x1: Lf, y0: -top.bo / 2, y1: top.bo / 2, z0: h2, z1: h2 + top.to, col: c('pTop', ACC), id: 'pTop' });
-    B.push({ x0: -Lf, x1: Lf, y0: -bot.bo / 2, y1: bot.bo / 2, z0: -h2 - bot.to, z1: -h2, col: c('pBot', ACC), id: 'pBot' });
-    if (G.top.dbl) [1, -1].forEach((sg) => B.push({ x0: -Lf, x1: Lf, y0: sg > 0 ? top.tIn0 : -top.tIn0 - top.bi, y1: sg > 0 ? top.tIn0 + top.bi : -top.tIn0, z0: h2 - S.tf - top.ti, z1: h2 - S.tf, col: c('pTop', ACC), id: 'pTop' }));
-    if (G.bot.dbl) [1, -1].forEach((sg) => B.push({ x0: -Lf, x1: Lf, y0: sg > 0 ? bot.tIn0 : -bot.tIn0 - bot.bi, y1: sg > 0 ? bot.tIn0 + bot.bi : -bot.tIn0, z0: -h2 + S.tf, z1: -h2 + S.tf + bot.ti, col: c('pBot', ACC), id: 'pBot' }));
-    [1, -1].forEach((sg) => B.push({ x0: -Lw, x1: Lw, y0: sg > 0 ? S.tw / 2 : -S.tw / 2 - wp.tp, y1: sg > 0 ? S.tw / 2 + wp.tp : -S.tw / 2, z0: -wp.hp / 2, z1: wp.hp / 2, col: c('pWeb', ACC), id: 'pWeb' }));
-    // têtes de boulons (prismes)
-    const hd = (d) => d * 0.9;
+    boxes.push({ x0: -Lf, x1: Lf, y0: -top.bo / 2, y1: top.bo / 2, z0: h2, z1: h2 + top.to, col: c('pTop', ACC) });
+    boxes.push({ x0: -Lf, x1: Lf, y0: -bot.bo / 2, y1: bot.bo / 2, z0: -h2 - bot.to, z1: -h2, col: c('pBot', ACC) });
+    if (G.top.dbl) [1, -1].forEach((sg) => boxes.push({ x0: -Lf, x1: Lf, y0: sg > 0 ? top.tIn0 : -top.tIn0 - top.bi, y1: sg > 0 ? top.tIn0 + top.bi : -top.tIn0, z0: h2 - S.tf - top.ti, z1: h2 - S.tf, col: c('pTop', ACC) }));
+    if (G.bot.dbl) [1, -1].forEach((sg) => boxes.push({ x0: -Lf, x1: Lf, y0: sg > 0 ? bot.tIn0 : -bot.tIn0 - bot.bi, y1: sg > 0 ? bot.tIn0 + bot.bi : -bot.tIn0, z0: -h2 + S.tf, z1: -h2 + S.tf + bot.ti, col: c('pBot', ACC) }));
+    [1, -1].forEach((sg) => boxes.push({ x0: -Lw, x1: Lw, y0: sg > 0 ? S.tw / 2 : -S.tw / 2 - wp.tp, y1: sg > 0 ? S.tw / 2 + wp.tp : -S.tw / 2, z0: -wp.hp / 2, z1: wp.hp / 2, col: c('pWeb', ACC) }));
+    // boulons : chaque position des deux côtés du joint
+    const zTopIn = h2 - S.tf - (G.top.dbl ? top.ti : 0), zBotIn = -h2 + S.tf + (G.bot.dbl ? bot.ti : 0);
     R.geo.fl.pts.forEach((p) => [1, -1].forEach((sg) => {
-      const x = sg * p.x, d = hd(R.bolt.d);
-      B.push({ x0: x - d / 2, x1: x + d / 2, y0: p.t - d / 2, y1: p.t + d / 2, z0: h2 + top.to, z1: h2 + top.to + R.bolt.d * 0.6, col: c('bTop', '#4a4a48'), id: 'bTop' });
-      B.push({ x0: x - d / 2, x1: x + d / 2, y0: p.t - d / 2, y1: p.t + d / 2, z0: -h2 - bot.to - R.bolt.d * 0.6, z1: -h2 - bot.to, col: c('bBot', '#4a4a48'), id: 'bBot' });
+      const x = sg * p.x;
+      prisms.push(...boltPrisms('z', [x, p.t, 0], R.bolt.d, h2 + top.to, zTopIn, c('bTop', BOLT), 'bTop'));
+      prisms.push(...boltPrisms('z', [x, p.t, 0], R.bolt.d, -h2 - bot.to, zBotIn, c('bBot', BOLT), 'bBot'));
     }));
+    const yW = S.tw / 2 + wp.tp;
     R.geo.web.pts.forEach((p) => [1, -1].forEach((sg) => {
-      const x = sg * p.x, d = hd(R.boltW.d), y0 = -S.tw / 2 - wp.tp;
-      B.push({ x0: x - d / 2, x1: x + d / 2, y0: y0 - R.boltW.d * 0.6, y1: y0, z0: p.t - d / 2, z1: p.t + d / 2, col: c('bWeb', '#4a4a48'), id: 'bWeb' });
+      prisms.push(...boltPrisms('y', [sg * p.x, 0, p.t], R.boltW.d, -yW, yW, c('bWeb', BOLT), 'bWeb'));
     }));
-    return { B, ext, h2 };
+    return { scene: { boxes, prisms }, ext, h2 };
   }
-
-  // Faces visibles de boîtes, triées du plus loin au plus proche. Les boîtes longues sont découpées en tranches
-  // le long de x pour que l'algorithme du peintre reste juste (plat posé sur une semelle longue, etc.).
-  function facesOf(B, cam, step) {
-    const faces = [];
-    const slices = [];
-    // grille commune : toutes les boîtes sont coupées aux mêmes abscisses (multiples de step)
-    B.forEach((b) => {
-      const cuts = [b.x0];
-      for (let x = Math.ceil(b.x0 / step + 1e-9) * step; x < b.x1 - 1e-6; x += step) cuts.push(x);
-      cuts.push(b.x1);
-      for (let i = 0; i < cuts.length - 1; i++) slices.push(Object.assign({}, b, { x0: cuts[i], x1: cuts[i + 1], first: i === 0, last: i === cuts.length - 2 }));
-    });
-    slices.forEach((b) => {
-      const P = (x, y, z) => cam.p(x, y, z);
-      const cen = P((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, (b.z0 + b.z1) / 2);
-      const F6 = [
-        { c: [[b.x0, b.y0, b.z1], [b.x1, b.y0, b.z1], [b.x1, b.y1, b.z1], [b.x0, b.y1, b.z1]], f: 1.12 },
-        { c: [[b.x0, b.y0, b.z0], [b.x1, b.y0, b.z0], [b.x1, b.y1, b.z0], [b.x0, b.y1, b.z0]], f: 0.7 },
-        { c: [[b.x0, b.y0, b.z0], [b.x1, b.y0, b.z0], [b.x1, b.y0, b.z1], [b.x0, b.y0, b.z1]], f: 0.95 },
-        { c: [[b.x0, b.y1, b.z0], [b.x1, b.y1, b.z0], [b.x1, b.y1, b.z1], [b.x0, b.y1, b.z1]], f: 0.8 },
-        { c: [[b.x0, b.y0, b.z0], [b.x0, b.y1, b.z0], [b.x0, b.y1, b.z1], [b.x0, b.y0, b.z1]], f: 0.85, end: 'first' },
-        { c: [[b.x1, b.y0, b.z0], [b.x1, b.y1, b.z0], [b.x1, b.y1, b.z1], [b.x1, b.y0, b.z1]], f: 0.78, end: 'last' }
-      ];
-      F6.forEach((fc) => {
-        if (fc.end && !b[fc.end]) return;                    // face interne entre deux tranches
-        const pts = fc.c.map((q) => P(q[0], q[1], q[2]));
-        const d = pts.reduce((a, q) => a + q.d / 4, 0), dmax = Math.max(...pts.map((q) => q.d));
-        if (d >= cen.d - 1e-6) return;                       // face tournée vers l'arrière
-        const col = shade(b.col, fc.f);
-        faces.push({ pts, d, dmax, col, op: b.op, seam: !fc.end && !(b.first && b.last) });
-      });
-    });
-    // tri sur le point le plus éloigné de chaque face (les grandes faces passent avant les petites pièces posées dessus)
-    faces.sort((a, b) => b.dmax - a.dmax || b.d - a.d);
-    return faces;
-  }
-  const poly = (f, S2) => `<polygon points="${f.pts.map((q) => { const p = S2(q); return p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' ')}" fill="${f.col}"${f.op ? ` fill-opacity="${f.op}"` : ''} stroke="${f.seam ? f.col : INK}" stroke-width="${f.seam ? 0.8 : 0.45}"${f.op ? ` stroke-opacity="${f.op}"` : ''} stroke-linejoin="round"/>`;
-
-  function render3D(R, opts = {}) {
-    const W = opts.W || 560, H = opts.H || 360;
-    const cam = camera(opts.az, opts.el);
-    const { B, ext } = boxesOf(R, opts.colorOf);
-    const faces = facesOf(B, cam, Math.max(10, Math.round(ext / 18 / 5) * 5));
-    const all = faces.flatMap((f) => f.pts).concat(opts.extraPts ? opts.extraPts.map((q) => cam.p(q[0], q[1], q[2])) : []);
-    const umin = Math.min(...all.map((q) => q.u)), umax = Math.max(...all.map((q) => q.u)), vmin = Math.min(...all.map((q) => q.v)), vmax = Math.max(...all.map((q) => q.v));
-    const pad = opts.pad || 26, top = opts.top || 36;
-    const k = Math.min((W - 2 * pad) / (umax - umin), (H - top - pad) / (vmax - vmin));
-    const ox = (W - (umax - umin) * k) / 2 - umin * k, oy = top + (H - top - pad - (vmax - vmin) * k) / 2 - vmin * k;
-    const S2 = (q) => ({ x: ox + q.u * k, y: oy + q.v * k });
-    let s = faces.map((f) => poly(f, S2)).join('');
-    // axe du joint
-    const a1 = S2(cam.p(0, 0, R.S.h / 2 + 60)), a2 = S2(cam.p(0, 0, -R.S.h / 2 - 60));
-    s += `<line x1="${a1.x}" y1="${a1.y}" x2="${a2.x}" y2="${a2.y}" stroke="${INK}" stroke-width=".6" stroke-dasharray="7 3 1 3"/>`;
-    const proj = (x, y, z) => S2(cam.p(x, y, z));
-    // trièdre
-    const tri = opts.triad !== false ? (() => {
-      const o = { x: 34, y: H - 30 }, L = 26;
-      const d = (x, y, z) => { const a = cam.p(x, y, z), b = cam.p(0, 0, 0); const n = Math.hypot(a.u - b.u, a.v - b.v) || 1; return { x: o.x + (a.u - b.u) / n * L, y: o.y + (a.v - b.v) / n * L }; };
-      const id = 'tri' + (++uid);
-      return `<defs><marker id="${id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0L10,5L0,10z" fill="${INK}"/></marker></defs>` +
-        [['x', d(1, 0, 0)], ['y', d(0, 1, 0)], ['z', d(0, 0, 1)]].map(([n, p]) => `<line x1="${o.x}" y1="${o.y}" x2="${p.x.toFixed(1)}" y2="${p.y.toFixed(1)}" stroke="${INK}" stroke-width="1" marker-end="url(#${id})"/>${T(p.x + (p.x - o.x) * 0.25, p.y + (p.y - o.y) * 0.25 + 3, n, { a: 'middle', fs: 9.5, fw: 700 })}`).join('');
-    })() : '';
-    return { s: s + tri, proj, k, cam, W, H };
-  }
-
   function iso(R, opts = {}) {
     const W = opts.W || 560, H = opts.H || 340;
-    const r = render3D(R, Object.assign({}, opts, { W, H }));
+    const { scene } = sceneOf(R, opts.colorOf);
+    const r = R3D().render(scene, { W, H, top: opts.sub ? 40 : 30, pad: 22, az: opts.az, el: opts.el });
+    const a1 = r.proj(0, 0, R.S.h / 2 + 50), a2 = r.proj(0, 0, -R.S.h / 2 - 50);
     const title = opts.title == null ? 'Vue 3D' : opts.title;
-    return svgWrap(W, H, (title ? T(8, 16, title, { fw: 800, fs: 11.5 }) : '') + (opts.sub ? T(8, 30, opts.sub, { fw: 500, fs: 9.5, col: MUTED }) : '') + r.s + (opts.after ? opts.after(r) : ''));
+    return svgWrap(W, H, `<image href="${r.img}" x="0" y="0" width="${W}" height="${H}"/>` +
+      `<line x1="${a1.x.toFixed(1)}" y1="${a1.y.toFixed(1)}" x2="${a2.x.toFixed(1)}" y2="${a2.y.toFixed(1)}" stroke="${INK}" stroke-width=".6" stroke-dasharray="7 3 1 3"/>` +
+      (title ? T(8, 16, title, { fw: 800, fs: 11.5 }) : '') + (opts.sub ? T(8, 30, opts.sub, { fw: 500, fs: 9.5, col: MUTED }) : '') +
+      (opts.triad === false ? '' : triadSvg(r.cam, H)));
   }
+
 
   // ---------- vue 3D du torseur (actions sur la partie droite, côté vérifié) ----------
   const COL = { N: '#c0392b', Vy: '#2e86de', Vz: '#16a085', Mx: '#8e44ad', My: '#d35400', Mz: '#2c3e50' };
@@ -329,25 +277,19 @@
     const fmax = Math.max(1e-9, ...['N', 'Vy', 'Vz'].map((k) => Math.abs(vals[k]))), mmax = Math.max(1e-9, ...['Mx', 'My', 'Mz'].map((k) => Math.abs(vals[k])));
     const len = (v, m) => (Math.abs(v) < 1e-9 ? 0 : (0.35 + 0.65 * Math.abs(v) / m) * Lmax * 0.55);
     const ext = [[Lmax, 0, 0], [-Lmax, 0, 0], [0, Lmax * 0.6, 0], [0, -Lmax * 0.6, 0], [0, 0, Lmax * 0.6], [0, 0, -Lmax * 0.6]];
-    // poutre seule (sans éclisse) : partie droite pleine, partie gauche estompée
-    const Rb = Object.assign({}, R);
+    // poutre seule : partie droite (côté vérifié) vue depuis son about, face du joint mise en évidence
     const S0 = R.S, h2 = S0.h / 2;
-    const Bx = [];
-    const add = (x0, x1, op) => {
-      Bx.push({ x0, x1, y0: -S0.b / 2, y1: S0.b / 2, z0: h2 - S0.tf, z1: h2, col: BEAM, op });
-      Bx.push({ x0, x1, y0: -S0.b / 2, y1: S0.b / 2, z0: -h2, z1: -h2 + S0.tf, col: BEAM, op });
-      Bx.push({ x0, x1, y0: -S0.tw / 2, y1: S0.tw / 2, z0: -h2 + S0.tf, z1: h2 - S0.tf, col: BEAM, op });
+    const boxes = [];
+    const add = (x0, x1, col) => {
+      boxes.push({ x0, x1, y0: -S0.b / 2, y1: S0.b / 2, z0: h2 - S0.tf, z1: h2, col });
+      boxes.push({ x0, x1, y0: -S0.b / 2, y1: S0.b / 2, z0: -h2, z1: -h2 + S0.tf, col });
+      boxes.push({ x0, x1, y0: -S0.tw / 2, y1: S0.tw / 2, z0: -h2 + S0.tf, z1: h2 - S0.tf, col });
     };
-    add(-Lmax, -30, 0.35); add(30, Lmax, null);
-    void Rb;
-    const cam = camera(-32, 22);
-    const faces = facesOf(Bx, cam, Lmax / 10);
-    const all = faces.flatMap((f) => f.pts).concat(ext.map((q) => cam.p(q[0], q[1], q[2])));
-    const umin = Math.min(...all.map((q) => q.u)), umax = Math.max(...all.map((q) => q.u)), vmin = Math.min(...all.map((q) => q.v)), vmax = Math.max(...all.map((q) => q.v));
-    const k = Math.min((W - 40) / (umax - umin), (H - 70) / (vmax - vmin));
-    const ox = (W - (umax - umin) * k) / 2 - umin * k, oy = 36 + (H - 60 - (vmax - vmin) * k) / 2 - vmin * k;
-    const P = (x, y, z) => { const q = cam.p(x, y, z); return { x: ox + q.u * k, y: oy + q.v * k }; };
-    let s = faces.map((f) => poly(f, (q) => ({ x: ox + q.u * k, y: oy + q.v * k }))).join('');
+    add(30, Lmax, BEAM);
+    const rr = R3D().render({ boxes }, { W, H, top: 40, pad: 26, az: 34, el: 22, extra: ext.map((q) => [q[0] + 30, q[1], q[2]]) });
+    const cam = rr.cam;
+    const P = (x, y, z) => rr.proj(x, y, z);
+    let s = `<image href="${rr.img}" x="0" y="0" width="${W}" height="${H}"/>`;
     // face du joint (partie droite) mise en évidence
     const fc = [[30, -S0.b / 2, h2], [30, S0.b / 2, h2], [30, S0.b / 2, h2 - S0.tf], [30, S0.tw / 2, h2 - S0.tf], [30, S0.tw / 2, -h2 + S0.tf], [30, S0.b / 2, -h2 + S0.tf], [30, S0.b / 2, -h2], [30, -S0.b / 2, -h2], [30, -S0.b / 2, -h2 + S0.tf], [30, -S0.tw / 2, -h2 + S0.tf], [30, -S0.tw / 2, h2 - S0.tf], [30, -S0.b / 2, h2 - S0.tf]];
     s += `<polygon points="${fc.map((q) => { const p = P(q[0], q[1], q[2]); return p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' ')}" fill="#fff4d6" fill-opacity=".85" stroke="${INK}" stroke-width=".8"/>`;
