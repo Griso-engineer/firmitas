@@ -566,5 +566,8 @@
 
   function load(state) { st = C.upgrade(state); dirty = false; persist(); }
 
-  window.FirmitasSplice = { init, render, bind, page, load, get state() { return st; }, get dirty() { return dirty; }, summary: C.summary };
+  function flush(dbx) { dbx.sdraft = st; dbx.sdraftDirty = dirty; }
+  window.FirmitasSplice = { init, render, bind, page, load, flush, get state() { return st; }, get dirty() { return dirty; }, summary: C.summary };
+  window.FirmitasModules = window.FirmitasModules || {};
+  window.FirmitasModules.eclisse = { kind: 'eclisse', route: 'eclisse', title: 'Éclisse boulonnée', short: 'éclisse', ref: 'NF EN 1993-1-8 + AN', api: window.FirmitasSplice, upgrade: C.upgrade };
 })();

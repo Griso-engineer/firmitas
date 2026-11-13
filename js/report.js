@@ -91,7 +91,7 @@
     return p1 + p2 + p3;
   }
 
-  const build = () => items.map((it, i) => (it.state && it.state.kind === 'eclisse' ? window.FirmitasSplice.page(it.state, it.project, i, items.length, opts) : pageFor(it.state, it.project, i, items.length))).join('');
+  const build = () => items.map((it, i) => { const m = it.state && it.state.kind && window.FirmitasModules && window.FirmitasModules[it.state.kind]; return m ? m.api.page(it.state, it.project, i, items.length, opts) : pageFor(it.state, it.project, i, items.length); }).join('');
   function open(list) {
     items = list;
     const name = list.length === 1 ? (list[0].state.name || 'element') : (list[0].project || 'projet');

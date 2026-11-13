@@ -373,5 +373,5 @@
     return iso(R, { W, H, colorOf, title: 'Taux d\'utilisation par pièce', sub: 'vert : faible · orange : proche de 1 · rouge : > 100 % — enveloppe des torseurs' });
   }
 
-  window.FirmitasSpliceDraw = { plan, elevation, section, iso, torseur3D, convention, rateMap, rateCol, COL };
+  window.FirmitasSpliceDraw = { util: { T, sb, svgWrap, dimH, dimV, chainH, rect, stBeam, stPl, stDash, axisV, axisH, triadSvg, boltPrisms, fmt, INK, MUTED, ACC, BEAM, RED, DIM, BOLT }, plan, elevation, section, iso, torseur3D, convention, rateMap, rateCol, COL };
 })();

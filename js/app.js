@@ -476,9 +476,13 @@
   // ======================================================================
   //  PROJETS
   // ======================================================================
-  const isSplice = (it) => (it.kind || (it.state && it.state.kind)) === 'eclisse';
+  // modules d'assemblages enregistrés dans window.FirmitasModules (éclisse, plat soudé, platines…)
+  const MODS = () => window.FirmitasModules || {};
+  const kindOf = (it) => (it.kind || (it.state && it.state.kind) || 'beam');
+  const modOf = (kind) => MODS()[kind];
+  const isSplice = (it) => kindOf(it) !== 'beam';
   function summaryOf(st) {
-    if (st && st.kind === 'eclisse') return window.FirmitasSplice.summary(st);
+    if (st && st.kind && modOf(st.kind)) return modOf(st.kind).api.summary(st);
     try {
       const r = E.compute(st);
       return { type: 'Poutre', sec: r.S ? `${r.S.name} ${r.grade} · L = ${fmt(+st.L, 2)} m` : '—', gov: r.sls.max > (r.env ? r.env.max : 0) ? 'ELS — flèche' : (r.env && r.env.worst && r.env.worst.gov ? E.CRITERIA[r.env.worst.gov].label : ''), max: r.valid ? r.max : null };
@@ -487,10 +491,10 @@
   function renderProjets(app) {
     const kb = ST.usage() / 1024;
     const list = db.projects.map((p) => {
-      const isCur = [db.current, db.currentS].some((c) => c && c.projectId === p.id);
+      const isCur = [db.current, db.currentS].concat(Object.values(db.curs || {})).some((c) => c && c.projectId === p.id);
       const rows = p.items.map((it) => {
         const sm = summaryOf(it.state) || {};
-        const cur = isSplice(it) ? db.currentS : db.current;
+        const cur = curOf(kindOf(it));
         const isIt = cur && cur.projectId === p.id && cur.itemId === it.id;
         return `<tr${isIt ? ' class="gov"' : ''}><td><b>${esc(it.name)}</b></td><td>${esc(sm.type || '')}</td><td>${esc(sm.sec || '')}</td><td class="f">${sub(sm.gov || '')}</td><td class="num">${sm.max == null ? '—' : pct(sm.max)}</td><td>${pill(sm.max)}</td><td class="f">${new Date(it.updated).toLocaleDateString('fr-FR')}</td>
           <td style="white-space:nowrap"><button class="btn sm" data-act="open" data-p="${p.id}" data-i="${it.id}">Ouvrir</button> <button class="btn sm ghost" data-act="dupItem" data-p="${p.id}" data-i="${it.id}">Dupliquer</button> <button class="btn sm ghost" data-act="delItem" data-p="${p.id}" data-i="${it.id}">Supprimer</button></td></tr>`;
@@ -531,8 +535,8 @@
     });
   }
   const confirmBox = (title, text) => modal(title, `<p>${text}</p>`, [{ label: 'Annuler' }, { label: 'Confirmer', primary: true, value: () => true }]);
-  const curOf = (kind) => (kind === 'eclisse' ? db.currentS : db.current);
-  const setCur = (kind, v) => { if (kind === 'eclisse') db.currentS = v; else db.current = v; };
+  const curOf = (kind) => (kind === 'eclisse' ? db.currentS : kind === 'beam' ? db.current : (db.curs || {})[kind]);
+  const setCur = (kind, v) => { if (kind === 'eclisse') db.currentS = v; else if (kind === 'beam') db.current = v; else { db.curs = db.curs || {}; db.curs[kind] = v; } };
   function crumbK(kind) {
     const c = curOf(kind);
     const p = c && db.projects.find((x) => x.id === c.projectId);
@@ -641,10 +645,11 @@
     else if (a === 'open' || a === 'dupItem' || a === 'delItem') {
       const p = db.projects.find((x) => x.id === b.dataset.p), it = p.items.find((x) => x.id === b.dataset.i);
       if (a === 'open' && isSplice(it)) {
-        if (window.FirmitasSplice.dirty && !(await confirmBox('Ouvrir', 'Les modifications non enregistrées de l\'éclisse en cours seront perdues. Continuer ?'))) return;
-        window.FirmitasSplice.load(JSON.parse(JSON.stringify(it.state)));
-        db.currentS = { projectId: p.id, itemId: it.id }; ST.save(db);
-        location.hash = '#/eclisse';
+        const m = modOf(kindOf(it)); if (!m) return;
+        if (m.api.dirty && !(await confirmBox('Ouvrir', 'Les modifications non enregistrées de la vérification en cours seront perdues. Continuer ?'))) return;
+        m.api.load(JSON.parse(JSON.stringify(it.state)));
+        setCur(kindOf(it), { projectId: p.id, itemId: it.id }); ST.save(db);
+        location.hash = '#/' + m.route;
       } else if (a === 'open') {
         if (dirty && !(await confirmBox('Ouvrir', 'Les modifications non enregistrées de la vérification en cours seront perdues. Continuer ?'))) return;
         state = ST.upgrade(JSON.parse(JSON.stringify(it.state)));
@@ -656,7 +661,7 @@
       } else {
         if (!(await confirmBox('Supprimer', `Supprimer la vérification « ${esc(it.name)} » ?`))) return;
         p.items = p.items.filter((x) => x !== it);
-        [db.current, db.currentS].forEach((c) => { if (c && c.itemId === it.id) c.itemId = null; });
+        [db.current, db.currentS].concat(Object.values(db.curs || {})).forEach((c) => { if (c && c.itemId === it.id) c.itemId = null; });
         ST.save(db); route();
       }
     }
@@ -679,7 +684,7 @@
           if (!p || !Array.isArray(p.items)) throw new Error('format');
           p.id = ST.uid();
           if (db.projects.some((x) => x.name === p.name)) p.name += ' (import)';
-          p.items.forEach((it) => { it.id = ST.uid(); it.state = isSplice(it) ? window.FirmitasSpliceCalc.upgrade(it.state) : ST.upgrade(it.state); });
+          p.items.forEach((it) => { it.id = ST.uid(); it.state = isSplice(it) ? (modOf(kindOf(it)) ? modOf(kindOf(it)).upgrade(it.state) : it.state) : ST.upgrade(it.state); });
           db.projects.push(p); ST.save(db); route(); toast('Projet « ' + p.name + ' » importé');
         } catch (err) { toast('Fichier non reconnu'); }
       };
@@ -693,20 +698,20 @@
     $$('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.route === r));
     const { p } = crumb();
     $('#topMeta').innerHTML = p ? `${esc(p.name)}<span>${p.items.length} vérification${p.items.length > 1 ? 's' : ''}</span>` : 'Vérification acier<span>NF EN 1993-1-1 + AN</span>';
-    if (r === 'eclisse') { const ps = crumbK('eclisse').p; $('#topMeta').innerHTML = ps ? `${esc(ps.name)}<span>éclisse</span>` : 'Éclisse boulonnée<span>NF EN 1993-1-8 + AN</span>'; }
-    const views = { eclisse: (el) => window.FirmitasSplice.render(el), verification: renderVerification, detail: renderDetail, sections: renderSections, methode: renderMethode, projets: renderProjets };
-    (views[r] || renderVerification)(app);
+    const mr = Object.values(MODS()).find((m) => m.route === r);
+    if (mr) { const ps = crumbK(mr.kind).p; $('#topMeta').innerHTML = ps ? `${esc(ps.name)}<span>${esc(mr.short)}</span>` : `${esc(mr.title)}<span>${esc(mr.ref)}</span>`; }
+    const views = { verification: renderVerification, detail: renderDetail, sections: renderSections, methode: renderMethode, projets: renderProjets };
+    if (mr) mr.api.render(app); else (views[r] || renderVerification)(app);
     if (r !== 'verification') window.scrollTo(0, 0);
   }
   window.addEventListener('hashchange', route);
-  window.addEventListener('beforeunload', () => { db.draft = state; db.draftDirty = dirty; db.sdraft = window.FirmitasSplice.state; db.sdraftDirty = window.FirmitasSplice.dirty; ST.save(db); });
+  window.addEventListener('beforeunload', () => { db.draft = state; db.draftDirty = dirty; Object.values(MODS()).forEach((m) => m.api.flush(db)); ST.save(db); });
   window.FirmitasApp = {
     fmt, fmtG, pct, esc, sub, sectionSvg, get state() { return state; },
     crumbK, confirmBox, saveDb: () => ST.save(db),
     saveItem: (kind, obj, asNew) => doSave(asNew, obj, kind),
     newItem: (kind) => { const c = curOf(kind); setCur(kind, c ? { projectId: c.projectId, itemId: null } : null); ST.save(db); }
   };
-  window.FirmitasSplice.init(db);
-  window.FirmitasSplice.bind(app);
+  Object.values(MODS()).forEach((m) => { m.api.init(db); m.api.bind(app); });
   route();
 })();

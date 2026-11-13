@@ -466,5 +466,5 @@
     } catch (e) { return null; }
   }
 
-  window.FirmitasSpliceCalc = { compute, computeEnv, propose, defaultState, upgrade, summary, BOLTS, CLASSES, MU, KS, COMPS, GROUPS, d0Of, fuOf, num, beamOf };
+  window.FirmitasSpliceCalc = { groupForces, bearing, compute, computeEnv, propose, defaultState, upgrade, summary, BOLTS, CLASSES, MU, KS, COMPS, GROUPS, d0Of, fuOf, num, beamOf };
 })();
