@@ -352,3 +352,10 @@ ol.audit li b.sev.l { background: var(--paper-2); }
 .tq-grid.tq2 { grid-template-columns: minmax(190px, .8fr) minmax(0, 1fr); }
 @media (max-width: 880px) { .fig-grid.split { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 680px) { .kpis.k3, .tq-grid.tq2 { grid-template-columns: minmax(0, 1fr); } }
+
+/* rangées de figures : 4 vues de l'assemblage, 3 schémas de groupes */
+.fig-grid.g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.fig-grid.g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 1180px) { .fig-grid.g4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .fig-grid.g3 { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 880px) { .fig-grid.g4 { grid-template-columns: minmax(0, 1fr); } }
+.cap { font-size: 11px; color: var(--muted); margin: 6px 0 0; line-height: 1.4; }

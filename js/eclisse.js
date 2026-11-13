@@ -46,11 +46,13 @@
     return o;
   }
   function geoFigs(R, compact) {
-    return `<div class="fig-grid">
-      <div class="fig wide">${DR.elevation(R)}</div>
-      <div class="fig">${DR.plan(R, 'top')}</div><div class="fig">${DR.plan(R, 'bot')}</div>
-      <div class="fig">${DR.section(R)}</div><div class="fig">${DR.iso(R, { sub: 'plats d\'éclisse en vert, boulons en gris foncé' })}</div>
-    </div>${compact ? '' : ''}`;
+    // une ligne : élévation, plan de la semelle supérieure (l'inférieure est identique), coupe, 3D
+    return `<div class="fig-grid g4">
+      <div class="fig">${DR.elevation(R, 380, 330)}</div>
+      <div class="fig">${DR.plan(R, 'top', 380, 330)}</div>
+      <div class="fig">${DR.section(R, 330, 330)}</div>
+      <div class="fig">${DR.iso(R, { W: 380, H: 330, sub: 'plats en vert, boulons en gris' })}</div>
+    </div>`;
   }
   const get = (p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), st);
   function set(p, v) { const ks = p.split('.'); let a = st; ks.slice(0, -1).forEach((k) => { if (a[k] == null) a[k] = {}; a = a[k]; }); a[ks[ks.length - 1]] = v; }
@@ -139,13 +141,13 @@
     G.plies.forEach((p) => { if (p.bx && p.bt) ref = Math.min(ref, Math.min(p.bx.Fb, p.bt.Fb) / p.share); });
     return ref;
   }
-  function groupPanel(gid, comp, fScale, W = 560, H = 240) {
+  function groupPanel(gid, comp, fScale, W = 460, H = 300) {
     const G = R.groups[gid], geo = G.G, S = R.S, g = R.g, id = 'ag' + (++mk), idr = 'agr' + mk;
     const fl = G.kind === 'flange';
     const Lh = g / 2 + geo.e1b + (geo.n1 - 1) * geo.p1 + geo.e1;
     const span = fl ? Math.max(S.b, G.plate.bo) : (S.h - 2 * S.tf);
-    const k = Math.min((W - 60) / (2 * Lh + 60), (H - 56) / span);
-    const cx = W / 2, cy = 28 + (H - 56) / 2;
+    const k = Math.min((W - 40) / (2 * Lh + 60), (H - 62) / span);
+    const cx = W / 2, cy = 44 + (H - 62) / 2;
     const X = (x) => cx + x * k, Y = (t) => cy - t * k;
     const rect = (x1, x2, t1, t2, o) => `<rect x="${X(Math.min(x1, x2)).toFixed(1)}" y="${Y(Math.max(t1, t2)).toFixed(1)}" width="${(Math.abs(x2 - x1) * k).toFixed(1)}" height="${(Math.abs(t2 - t1) * k).toFixed(1)}" ${o}/>`;
     let s = '';
@@ -181,9 +183,8 @@
     const pm = geo.pts[imax], fm = forces[imax];
     if (fm.f > 0) s += T(X(pm.x) - r - 4, Y(pm.t) + (pm.t >= 0 ? -r - 3 : r + 11), `${kN(fm.f)} kN`, { col: RED, fw: 800, a: 'end' });
     const q = comp === 'tot' ? G.force : R.dist.per[comp][gid];
-    s += T(8, 14, `${C.GROUPS.find((x) => x.id === gid).label} — ${fl ? (G.dbl ? 'plat extérieur + 2 plats intérieurs (2 plans)' : 'plat extérieur seul (1 plan)') : '2 plats (2 plans)'}`, { fw: 800, fs: 11 });
-    s += T(W - 8, 14, `F<tspan font-size="8" dy="2">x</tspan><tspan dy="-2"> = ${kN(q.Fx)} · F</tspan><tspan font-size="8" dy="2">${fl ? 'y' : 'z'}</tspan><tspan dy="-2"> = ${kN(q.Ft)} kN · M = ${kNm(q.M)} kN·m</tspan>`, { a: 'end', fw: 500, fs: 10 });
-    s += T(8, H - 8, `${fl ? 'Vue en plan' : 'Élévation'} · trait mixte : axe du joint · côté vérifié à droite ·${compLabel(comp)} · teinte = taux du boulon sous le torseur complet`, { fw: 500, fs: 9, col: '#6e6d69' });
+    s += T(8, 14, `${C.GROUPS.find((x) => x.id === gid).label} — ${fl ? (G.dbl ? 'plat ext. + 2 plats int. (2 plans)' : 'plat extérieur (1 plan)') : '2 plats (2 plans)'}`, { fw: 800, fs: 11 });
+    s += T(8, 30, `F<tspan font-size="8" dy="2">x</tspan><tspan dy="-2"> = ${kN(q.Fx)} · F</tspan><tspan font-size="8" dy="2">${fl ? 'y' : 'z'}</tspan><tspan dy="-2"> = ${kN(q.Ft)} kN · M = ${kNm(q.M)} kN·m</tspan>`, { fw: 500, fs: 10, col: '#6e6d69' });
     return { svg: `<svg class="diag" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg"><defs>${marker(id, INK)}${marker(idr, RED)}</defs>${s}</svg>`, fmax: fm.f };
   }
   function scaleOf(comp) {
@@ -377,9 +378,9 @@
     // contribution des composantes au boulon le plus chargé de chaque groupe
     const contrib = C.COMPS.map((c) => `<tr${view === c.id ? ' class="gov"' : ''}><td>${sub(c.label)}</td>${['top', 'web', 'bot'].map((g) => { const G = R.groups[g], f = G.loads[c.id][G.imax]; return `<td class="num">${f.f < 1 ? '·' : kN(f.fx)}</td><td class="num">${f.f < 1 ? '·' : kN(f.ft)}</td>`; }).join('')}</tr>`).join('');
     const keepOpen = !box.querySelector('details') || box.querySelector('details').open;
-    box.innerHTML = `<details class="fold" style="margin-top:0;margin-bottom:18px"${keepOpen ? ' open' : ''}><summary>Géométrie cotée de l'assemblage</summary>${geoFigs(R)}</details>
+    box.innerHTML = `<div style="max-width:760px;margin-bottom:18px">${endView(view)}</div>
+      <details class="fold" style="margin-top:0;margin-bottom:18px"${keepOpen ? ' open' : ''}><summary>Géométrie cotée de l'assemblage</summary>${geoFigs(R)}</details>
       <div style="display:grid;gap:22px;grid-template-columns:minmax(0,1fr)">
-        <div style="max-width:760px">${endView(view)}</div>
         <div>
           <div class="sub-title" style="margin-top:0">Répartition entre les plats [kN, kN·m]</div>
           <div class="tbl-wrap"><table class="tbl compact"><thead>
@@ -398,7 +399,8 @@
         </div>
       </div>
       <div class="chips" style="margin-top:22px">${scaleChips}</div>
-      <div style="margin-top:12px;display:grid;gap:10px;max-width:900px">${panels.map((p) => p.svg).join('')}</div>
+      <div class="fig-grid g3" style="margin-top:12px">${panels.map((p) => `<div class="fig">${p.svg}</div>`).join('')}</div>
+      <p class="cap">Semelles en vue en plan, âme en élévation · trait mixte : axe du joint · côté vérifié à droite · ${view === 'tot' ? 'torseur complet' : 'composante ' + sub(C.COMPS.find((x) => x.id === view).label)} · teinte = taux du boulon sous le torseur complet</p>
       <p class="note">Effort par boulon : f = F/n + M<sub>c</sub>·r/Σr² (répartition élastique), avec M<sub>c</sub> = moment à l'axe du joint + excentrement de l'effort transversal jusqu'au centre du groupe. Vecteurs : effort exercé par le plat sur le boulon ; en rouge le boulon le plus sollicité pour la vue choisie. Boulons pâles à gauche : côté symétrique, non représenté.</p>`;
   }
 
@@ -477,7 +479,7 @@
       const p2 = `<section class="rp-page">${head('p. 2')}
         ${H2('Efforts dans les boulons — ' + (multi ? 'torseur « ' + gName + ' »' : 'torseur complet'))}
         ${['top', 'web', 'bot'].map((g) => groupPanel(g, 'tot', sc, 560, 200).svg).join('')}
-        <p style="font-size:7.6pt;color:#555">Répartition élastique f = F/n + M<sub>c</sub>·r/Σr², M<sub>c</sub> incluant l'excentrement jusqu'au centre du groupe. Boulon le plus chargé : semelle sup. ${kN(G.top.tot[G.top.imax].f)} kN, âme ${kN(G.web.tot[G.web.imax].f)} kN, semelle inf. ${kN(G.bot.tot[G.bot.imax].f)} kN.</p>
+        <p style="font-size:7.6pt;color:#555">Semelles en vue en plan, âme en élévation, côté vérifié à droite ; teinte = taux du boulon. Répartition élastique f = F/n + M<sub>c</sub>·r/Σr², M<sub>c</sub> incluant l'excentrement jusqu'au centre du groupe. Boulon le plus chargé : semelle sup. ${kN(G.top.tot[G.top.imax].f)} kN, âme ${kN(G.web.tot[G.web.imax].f)} kN, semelle inf. ${kN(G.bot.tot[G.bot.imax].f)} kN.</p>
       </section>`;
       const p3 = `<section class="rp-page">${head('p. 3')}
         ${H2('Vérifications')}

@@ -75,8 +75,8 @@
     const S = R.S, G = R.groups[gid], fl = R.geo.fl, P = G.plate, g = R.g;
     const { Lf } = lens(R);
     const ext = Lf + 60;
-    const k = Math.min((W - 200) / (2 * ext), (H - 110) / Math.max(S.b, P.bo));
-    const cx = 40 + (W - 200) / 2, cy = 52 + Math.max(S.b, P.bo) * k / 2;
+    const k = Math.min((W - 230) / (2 * ext), (H - 124) / Math.max(S.b, P.bo));
+    const cx = 44 + ext * k, cy = 66 + Math.max(S.b, P.bo) * k / 2;
     const X = (x) => cx + x * k, Y = (y) => cy - y * k;
     let s = '';
     s += rect(X(-ext), Y(S.b / 2), (ext - g / 2) * k, S.b * k, stBeam) + rect(X(g / 2), Y(S.b / 2), (ext - g / 2) * k, S.b * k, stBeam);
@@ -106,7 +106,8 @@
     if (G.dbl) s += dimV(Y(-P.tIn0), Y(-P.tIn0 - P.bi), X(-Lf) - 16, `b_i = ${fmt(P.bi, 0)}`, { ext: X(-Lf), left: true });
     const tt = gid === 'top' ? 'Plan de la semelle supérieure' : 'Plan de la semelle inférieure';
     s += T(8, 16, tt, { fw: 800, fs: 11.5 });
-    s += T(8, 30, `${G.dbl ? `plat extérieur ${fmt(P.bo)} × ${fmt(P.to, 1)} + 2 plats intérieurs ${fmt(P.bi)} × ${fmt(P.ti, 1)} (tiretés)` : `plat extérieur seul ${fmt(P.bo)} × ${fmt(P.to, 1)}`} · M${G.B.d}, d_0 = ${G.B.d0}${G.pack > 0 ? ` · fourrure ${fmt(G.pack, 1)}` : ''}`.replace(/d_0/, 'd<tspan baseline-shift="sub" font-size="75%">0</tspan>'), { fw: 500, fs: 9.5, col: MUTED });
+    s += T(8, 30, G.dbl ? `plat ext. ${fmt(P.bo)} × ${fmt(P.to, 1)} + 2 plats int. ${fmt(P.bi)} × ${fmt(P.ti, 1)} (tiretés)` : `plat extérieur seul ${fmt(P.bo)} × ${fmt(P.to, 1)}`, { fw: 500, fs: 9.5, col: MUTED });
+    s += T(8, 43, `M${G.B.d}, d_0 = ${G.B.d0} · semelle inférieure identique${G.pack > 0 ? ` · fourrure ${fmt(G.pack, 1)}` : ''}`.replace(/d_0/, 'd<tspan baseline-shift="sub" font-size="75%">0</tspan>'), { fw: 500, fs: 9.5, col: MUTED });
     return svgWrap(W, Hb, s);
   }
 
@@ -119,8 +120,8 @@
     const { Lf, Lw, L } = lens(R);
     const ext = L + 60;
     const Ht = S.h + top.to + bot.to;
-    const k = Math.min((W - 130) / (2 * ext), (H - 110) / Ht);
-    const cx = W / 2 - 20, cy = 58 + (top.to + S.h / 2) * k;
+    const k = Math.min((W - 190) / (2 * ext), (H - 120) / Ht);
+    const cx = 72 + ext * k, cy = 68 + (top.to + S.h / 2) * k;
     const X = (x) => cx + x * k, Z = (z) => cy - z * k;
     const h2 = S.h / 2;
     let s = '';
@@ -158,7 +159,8 @@
     s += dimV(Z(h2), Z(-h2), X(-ext) - 12, `h = ${fmt(S.h, 1)}`, { ext: X(-ext), left: true });
     s += T(X(-Lf) - 4, Z(h2 + top.to) + 2, `t_o = ${fmt(top.to, 1)}`.replace('t_o', 't<tspan baseline-shift="sub" font-size="75%">o</tspan>'), { a: 'end', fs: 8.5, col: DIM });
     s += T(8, 16, 'Élévation', { fw: 800, fs: 11.5 });
-    s += T(8, 30, `plats d'âme 2 × ${fmt(wp.hp)} × ${fmt(wp.tp, 1)} · M${R.boltW.d} · ${wb.n1} file(s) × ${wb.n2} rangée(s) par côté · trait mixte : axe du joint`, { fw: 500, fs: 9.5, col: MUTED });
+    s += T(8, 30, `plats d'âme 2 × ${fmt(wp.hp)} × ${fmt(wp.tp, 1)} · M${R.boltW.d}`, { fw: 500, fs: 9.5, col: MUTED });
+    s += T(8, 43, `${wb.n1} file(s) × ${wb.n2} rangée(s) par côté · trait mixte : axe du joint`, { fw: 500, fs: 9.5, col: MUTED });
     return svgWrap(W, Hb, s);
   }
 
@@ -168,8 +170,8 @@
   function section(R, W = 440, H = 360) {
     const S = R.S, G = R.groups, top = G.top.plate, bot = G.bot.plate, wp = G.web.plate, fl = R.geo.fl, wb = R.geo.web;
     const Ht = S.h + top.to + bot.to, Bt = Math.max(S.b, top.bo, bot.bo);
-    const k = Math.min((H - 80) / Ht, (W - 170) / Bt);
-    const cx = 95 + Bt * k / 2, cy = 44 + (top.to + S.h / 2) * k;
+    const k = Math.min((H - 100) / Ht, (W - 150) / Bt);
+    const cx = 82 + Bt * k / 2, cy = 62 + (top.to + S.h / 2) * k;   // 62 : place pour le titre et la cote b_o au-dessus
     const X = (y) => cx + y * k, Z = (z) => cy - z * k;
     const h2 = S.h / 2;
     const R2 = (y1, y2, z1, z2, st) => rect(X(Math.min(y1, y2)), Z(Math.max(z1, z2)), Math.abs(y2 - y1) * k, Math.abs(z2 - z1) * k, st);
@@ -196,7 +198,7 @@
     if (G.bot.dbl) s += dimV(Z(-h2 + S.tf + bot.ti), Z(-h2 + S.tf), X(Bt / 2) + 12, `t_i = ${fmt(bot.ti, 1)}`, { ext: X(bot.tIn0 + bot.bi) });
     s += dimV(Z(wp.hp / 2), Z(-wp.hp / 2), X(-Bt / 2) - 14, `h_p = ${fmt(wp.hp)}`, { ext: X(-S.tw / 2 - wp.tp), left: true });
     s += T(X(S.tw / 2 + wp.tp) + 4, Z(wp.hp / 2) + 12, `t_p = ${fmt(wp.tp, 1)}`.replace('t_p', 't<tspan baseline-shift="sub" font-size="75%">p</tspan>'), { fs: 8.5, col: DIM });
-    if (G.top.dbl || G.bot.dbl) { const P = G.top.dbl ? top : bot; s += T(X(P.tIn0), Z(G.top.dbl ? h2 - S.tf - P.ti : -h2 + S.tf + P.ti) + (G.top.dbl ? 11 : -4), `b_i = ${fmt(P.bi)}`.replace('b_i', 'b<tspan baseline-shift="sub" font-size="75%">i</tspan>'), { fs: 8.5, col: DIM }); }
+    if (G.top.dbl || G.bot.dbl) { const P = G.top.dbl ? top : bot; s += T(X(-P.tIn0 - P.bi) - 3, Z(G.top.dbl ? h2 - S.tf - P.ti : -h2 + S.tf + P.ti) + (G.top.dbl ? 3 : 6), `b_i = ${fmt(P.bi)}`.replace("b_i", "b<tspan baseline-shift=\"sub\" font-size=\"75%\">i</tspan>"), { fs: 8.5, col: DIM, a: "end" }); }
     s += T(8, 16, 'Coupe transversale', { fw: 800, fs: 11.5 });
     s += T(8, 30, `${S.name} · y horizontal, z vertical`, { fw: 500, fs: 9.5, col: MUTED });
     return svgWrap(W, H, s);
@@ -255,7 +257,7 @@
   function iso(R, opts = {}) {
     const W = opts.W || 560, H = opts.H || 340;
     const { scene } = sceneOf(R, opts.colorOf);
-    const r = R3D().render(scene, { W, H, top: opts.sub ? 40 : 30, pad: 22, az: opts.az, el: opts.el });
+    const r = R3D().render(scene, { W, H, top: opts.sub ? 40 : 30, pad: 22, az: opts.az, el: opts.el, edge: opts.edge == null ? 0.55 : opts.edge });
     const a1 = r.proj(0, 0, R.S.h / 2 + 50), a2 = r.proj(0, 0, -R.S.h / 2 - 50);
     const title = opts.title == null ? 'Vue 3D' : opts.title;
     return svgWrap(W, H, `<image href="${r.img}" x="0" y="0" width="${W}" height="${H}"/>` +
