@@ -533,7 +533,7 @@
     app.addEventListener('change', onEdit);
     // collage d'un bloc (Excel, RFEM) dans le tableau des torseurs : remplit vers la droite et vers le bas
     app.addEventListener('paste', (e) => {
-      const t = e.target; if (!t.dataset || t.dataset.lr == null) return;
+      const t = e.target; if (!t.dataset || t.dataset.lr == null || !t.dataset.sp) return;
       const txt = (e.clipboardData || window.clipboardData).getData('text');
       if (!/[\t\n]/.test(txt)) return;
       e.preventDefault();

@@ -1,0 +1,212 @@
+/* ==========================================================================
+   Firmitas — attache par plat soudé (« fin plate ») : extrémité de poutre en I
+   boulonnée sur un plat soudé à une poutre support.
+   NF EN 1993-1-8 (+ AN), démarche du guide SCI P358 pour les plats soudés.
+   Hors vérification : poutre support et soudure du plat sur la poutre support.
+   Unités internes : N, mm, MPa. Entrées : kN, mm.
+   Repère : x le long de la poutre portée depuis la face de la poutre support (x = 0),
+   z vertical vers le haut, centre du groupe de boulons à z = 0.
+   Convention : V_Ed > 0 = réaction d'appui de la poutre portée (charge descendante) ;
+   N_Ed > 0 = traction (la poutre tire sur l'attache), < 0 = compression.
+   ========================================================================== */
+(function () {
+  'use strict';
+  const SC = window.FirmitasSpliceCalc, D = window.FIRMITAS_DATA;
+  const { num, BOLTS, CLASSES, d0Of, fuOf, groupForces, bearing } = SC;
+  const PI = Math.PI, BIG = 1e9;
+
+  function defaultState() {
+    return {
+      v: 1, kind: 'platsoude', name: 'Attache A1',
+      sec: { kind: 'cat', fam: 'IPE', name: 'IPE 360', prs: { h: 500, b: 200, tw: 10, tf: 16 } },
+      grade: 'S355', plateGrade: 'S355',
+      bolt: { d: 20, cls: '8.8', threads: true },
+      gam: { M0: 1, M2: 1.25 },
+      gap: 10,
+      plate: { tp: 10, zTop: 35 },
+      bolts: { n1: 4, n2: 1, p1: 70, p2: 60, e1: 40, e2p: 45, e2b: 40 },
+      cur: 0,
+      loads: [{ name: 'ELU 1', V: 180, N: 0 }, { name: 'ELU 2 — chaînage', V: 60, N: 75 }]
+    };
+  }
+  function upgrade(s) {
+    const d = defaultState();
+    (function merge(dst, src) {
+      Object.keys(src).forEach((k) => {
+        if (dst[k] === undefined) dst[k] = src[k];
+        else if (src[k] && typeof src[k] === 'object' && !Array.isArray(src[k]) && dst[k] && typeof dst[k] === 'object') merge(dst[k], src[k]);
+      });
+    })(s, d);
+    return s;
+  }
+  const loadOf = (s, idx) => { const L = Array.isArray(s.loads) && s.loads.length ? s.loads : [{}]; return L[Math.max(0, Math.min(L.length - 1, idx == null ? (+s.cur || 0) : idx))]; };
+
+  // ---------- géométrie ----------
+  function geometry(s, S) {
+    const B = s.bolts, n1 = Math.max(1, Math.round(num(B.n1, 1))), n2 = Math.max(1, Math.round(num(B.n2, 1)));
+    const p1 = num(B.p1), p2 = num(B.p2), e1 = num(B.e1), e2p = num(B.e2p), e2b = num(B.e2b), g = Math.max(0, num(s.gap));
+    const tp = num(s.plate.tp), zTop = num(s.plate.zTop);
+    const hp = 2 * e1 + (n1 - 1) * p1;
+    const a = g + e2b;                                       // face d'appui → 1re file de boulons
+    const bp = a + (n2 - 1) * p2 + e2p;                      // largeur du plat (débord depuis l'appui)
+    const pts = [];
+    for (let j = 0; j < n2; j++) for (let i = 0; i < n1; i++) pts.push({ x: a + j * p2, t: ((n1 - 1) / 2 - i) * p1 });
+    const zc = a + (n2 - 1) * p2 / 2;                         // excentrement face d'appui → centre du groupe
+    // position verticale : z mesuré depuis le haut de la poutre jusqu'au haut du plat ; centre du groupe sous le haut de poutre
+    const zG = zTop + hp / 2;
+    return { n1, n2, p1, p2, e1, e2p, e2b, g, tp, zTop, hp, a, bp, pts, zc, zG, h: S.h };
+  }
+
+  function compute(s, idx) {
+    const R = { valid: true, warnings: [], info: [], checks: [] };
+    const S = SC.beamOf(s); R.S = S;
+    if (!S) { R.valid = false; R.warnings.push('Section invalide : profil en I à ailes parallèles ou PRS requis.'); return R; }
+    const LD = loadOf(s, idx); R.loadName = LD.name || '';
+    const V = num(LD.V) * 1e3, N = num(LD.N) * 1e3;
+    R.L = { V, N };
+    const gam = { M0: num(s.gam.M0, 1) || 1, M2: num(s.gam.M2, 1.25) || 1.25 };
+    const b = s.bolt, d = num(b.d, 20), As = BOLTS[d] || 245, d0 = d0Of(d), Ab = PI * d * d / 4;
+    const bc = CLASSES[b.cls] || CLASSES['8.8'];
+    const threads = b.threads !== false;
+    const Fv1 = (threads ? bc.av * As : 0.6 * Ab) * bc.fub / gam.M2;
+    R.bolt = { d, d0, As, Ab, fub: bc.fub, cls: b.cls, threads, FvPlane: Fv1 };
+    const G = geometry(s, S); R.geo = G;
+    const tp = G.tp, fyp = D.fyOf(s.plateGrade, tp, 'en10025'), fup = fuOf(s.plateGrade, tp);
+    const fyb = D.fyOf(s.grade, S.tf, 'en10025'), fub = fuOf(s.grade, S.tf);
+    R.mat = { fyp, fup, fyb, fub };
+    R.gam = gam;
+    const hw = S.h - 2 * S.tf;
+
+    // ---------- contrôles géométriques (tableau 3.3 et encombrement) ----------
+    const warnMin = (lbl, v, lim) => { if (v < lim - 1e-6) R.warnings.push(`${lbl} = ${v.toFixed(1)} mm < ${lim.toFixed(1)} mm (EN 1993-1-8 tableau 3.3).`); };
+    warnMin('Plat : pince verticale e₁', G.e1, 1.2 * d0);
+    warnMin('Plat : pince horizontale e₂ (bord libre)', G.e2p, 1.2 * d0);
+    warnMin('Âme : pince e₂,b (about de poutre)', G.e2b, 1.2 * d0);
+    if (G.n1 > 1) warnMin('Entraxe vertical p₁', G.p1, 2.2 * d0);
+    if (G.n2 > 1) warnMin('Entraxe horizontal p₂', G.p2, 2.4 * d0);
+    if (G.zTop < S.tf + S.r - 1e-6) R.warnings.push(`Le haut du plat (${G.zTop} mm sous le haut de poutre) empiète sur la semelle ou le congé (t_f + r = ${(S.tf + S.r).toFixed(1)} mm).`);
+    if (G.zTop + G.hp > S.h - S.tf - S.r + 1e-6) R.warnings.push(`Le bas du plat (${(G.zTop + G.hp).toFixed(0)} mm sous le haut de poutre) empiète sur la semelle inférieure ou le congé (limite ${(S.h - S.tf - S.r).toFixed(1)} mm).`);
+    if (G.g < 10) R.info.push('Jeu entre l\'about de poutre et la poutre support inférieur à 10 mm : vérifier la rotation de l\'attache sans contact.');
+    // recommandations de ductilité et de stabilité (guide SCI P358, attaches articulées)
+    if (bc.fub === 800 && tp > 0.5 * d) R.info.push(`Ductilité : t_p = ${tp} mm > 0,5·d = ${(0.5 * d).toFixed(1)} mm — le guide SCI P358 recommande t_p ≤ 0,5·d (boulons 8.8) pour que le plat plastifie en pression diamétrale avant la rupture des boulons.`);
+    if (G.hp < 0.6 * S.h) R.info.push(`Hauteur du plat h_p = ${G.hp.toFixed(0)} mm < 0,6·h = ${(0.6 * S.h).toFixed(0)} mm : maintien en torsion de l'extrémité de poutre à justifier (SCI P358 recommande h_p ≥ 0,6·h).`);
+    if (G.zc > tp / 0.15) R.info.push(`Plat long : excentrement z = ${G.zc.toFixed(0)} mm > t_p/0,15 = ${(tp / 0.15).toFixed(0)} mm — stabilité latérale du plat à justifier (SCI P358).`);
+
+    // ---------- efforts dans les boulons (répartition élastique, V excentré de z) ----------
+    const grp = { pts: G.pts };
+    const forces = groupForces(grp, N, -V, 0);
+    const parts = { V: groupForces(grp, 0, -V, 0), N: groupForces(grp, N, 0, 0) };
+    R.forces = forces; R.parts = parts;
+    const imax = forces.reduce((a, f, i) => (f.f > forces[a].f ? i : a), 0);
+    R.imax = imax;
+    const fm = forces[imax];
+    const add = (grpId, id, label, ref, Ed, Rd, extra) => {
+      const r = Rd > 0 ? Math.abs(Ed) / Rd : (Math.abs(Ed) > 0 ? Infinity : 0);
+      R.checks.push(Object.assign({ grp: grpId, id, label, ref, Ed, Rd, r }, extra || {}));
+    };
+
+    // --- boulons : cisaillement (1 plan), joint long dans la direction de V
+    const Lj = (G.n1 - 1) * G.p1;
+    const bL = Lj > 15 * d ? Math.max(0.75, Math.min(1, 1 - (Lj - 15 * d) / (200 * d))) : 1;
+    R.bL = bL;
+    add('bolts', 'v', `Boulons — cisaillement (1 plan${bL < 1 ? ', β_Lf = ' + bL.toFixed(3) : ''})`, '3.6.1 tab. 3.4 · 3.8', fm.f, Fv1 * bL);
+
+    // --- pression diamétrale : plat et âme, interaction vectorielle des deux directions
+    const plies = [
+      { id: 'plate', grp: 'plate', label: 'plat soudé', t: tp, fu: fup,
+        x: { eEnd: G.e2p, pAlong: G.p2, nAlong: G.n2, eEdge: G.e1, pPerp: G.p1, nPerp: G.n1 },
+        z: { eEnd: G.e1, pAlong: G.p1, nAlong: G.n1, eEdge: G.e2p, pPerp: G.p2, nPerp: G.n2 } },
+      { id: 'web', grp: 'web', label: 'âme de la poutre', t: S.tw, fu: fub,
+        x: { eEnd: G.e2b, pAlong: G.p2, nAlong: G.n2, eEdge: BIG, pPerp: G.p1, nPerp: G.n1 },
+        z: { eEnd: BIG, pAlong: G.p1, nAlong: G.n1, eEdge: G.e2b, pPerp: G.p2, nPerp: G.n2 } }
+    ];
+    plies.forEach((p) => {
+      const bx = bearing(d, d0, p.t, p.fu, bc.fub, gam.M2, p.x), bz = bearing(d, d0, p.t, p.fu, bc.fub, gam.M2, p.z);
+      let worst = 0, iw = 0;
+      forces.forEach((f, i) => { const v = Math.hypot(f.fx / bx.Fb, f.ft / bz.Fb); if (v > worst) { worst = v; iw = i; } });
+      const f = forces[iw];
+      add(p.grp, 'b', `Pression diamétrale — ${p.label} (t = ${p.t} mm)`, '3.6.1 tab. 3.4', worst, 1, {
+        ratioOnly: true, bx, bz,
+        note: `F_x = ${(f.fx / 1e3).toFixed(1)} kN / F_b,x,Rd = ${(bx.Fb / 1e3).toFixed(1)} kN (k₁ = ${bx.k1.toFixed(2)}, α_b = ${bx.ab.toFixed(2)}) ; F_z = ${(f.ft / 1e3).toFixed(1)} kN / F_b,z,Rd = ${(bz.Fb / 1e3).toFixed(1)} kN (k₁ = ${bz.k1.toFixed(2)}, α_b = ${bz.ab.toFixed(2)}) ; √(Σ²)`
+      });
+      p.bx = bx; p.bz = bz;
+    });
+    R.plies = plies;
+
+    // --- plat soudé
+    const Ap = G.hp * tp, Apn = (G.hp - G.n1 * d0) * tp;
+    const Vpl = Ap * fyp / (Math.sqrt(3) * gam.M0);
+    add('plate', 'pv', 'Plat — cisaillement, section brute', '6.2.6 (6.18)', V, Vpl);
+    add('plate', 'pvn', 'Plat — cisaillement, section nette', '6.2.6 · 3.10.2', V, Apn * fup / (Math.sqrt(3) * gam.M2));
+    {
+      const Ant = (G.e2p + (G.n2 - 1) * G.p2 - (G.n2 - 0.5) * d0) * tp;
+      const Anv = (G.e1 + (G.n1 - 1) * G.p1 - (G.n1 - 0.5) * d0) * tp;
+      add('plate', 'pbt', 'Plat — rupture en bloc sous V (charge excentrée)', '3.10.2 (3.10)', V, 0.5 * fup * Ant / gam.M2 + fyp * Anv / (Math.sqrt(3) * gam.M0));
+    }
+    {
+      // flexion du plat : M = V·z à la soudure (section brute) et V·(z − a) à la 1re file (section nette), avec N
+      const rho = Math.abs(V) > 0.5 * Vpl ? Math.pow(2 * Math.abs(V) / Vpl - 1, 2) : 0;
+      const fr = fyp * (1 - rho) / gam.M0;
+      const W = tp * G.hp * G.hp / 6;
+      const In = tp * (Math.pow(G.hp, 3) / 12 - G.pts.filter((q) => q.x === G.a).reduce((a, q) => a + d0 * d0 * d0 / 12 + d0 * q.t * q.t, 0));
+      const Wn = In / (G.hp / 2);
+      const M0 = Math.abs(V) * G.zc, M1 = Math.abs(V) * Math.max(0, G.zc - G.a);
+      const etaG = Math.abs(N) / (Ap * fr) + M0 / (W * fr);
+      const etaN = Math.abs(N) / (Apn * fr) + M1 / (Wn * fr);
+      add('plate', 'pm', `Plat — flexion + effort normal (soudure : M = ${(M0 / 1e6).toFixed(2)} kN·m ; 1ʳᵉ file, nette : ${(M1 / 1e6).toFixed(2)} kN·m${rho > 0 ? ', ρ = ' + rho.toFixed(3) : ''})`, '6.2.1 (6.2) · 6.2.8', Math.max(etaG, etaN), 1, { ratioOnly: true });
+    }
+    if (N > 0) {
+      add('plate', 'pt', 'Plat — traction, section brute', '6.2.3 (6.6)', N, Ap * fyp / gam.M0);
+      add('plate', 'pu', 'Plat — traction, section nette', '6.2.3 (6.7)', N, 0.9 * Apn * fup / gam.M2);
+      const Ant = ((G.n1 - 1) * G.p1 - (G.n1 - 1) * d0) * tp, Anv = 2 * (G.e2p + (G.n2 - 1) * G.p2 - (G.n2 - 0.5) * d0) * tp;
+      if (G.n1 > 1) add('plate', 'pbtN', 'Plat — rupture en bloc sous N', '3.10.2 (3.9)', N, fup * Ant / gam.M2 + fyp * Anv / (Math.sqrt(3) * gam.M0));
+    } else if (N < 0) {
+      add('plate', 'pc', 'Plat — compression, section brute', '6.2.4', -N, Ap * fyp / gam.M0);
+    }
+
+    // --- âme de la poutre portée
+    add('web', 'wv', 'Âme — cisaillement, section brute (A_v,z)', '6.2.6 (6.18)', V, S.Avz * fyb / (Math.sqrt(3) * gam.M0));
+    add('web', 'wvn', 'Âme — cisaillement, section nette à la file de boulons', '6.2.6 · 3.10.2', V, (S.Avz - G.n1 * d0 * S.tw) * fub / (Math.sqrt(3) * gam.M2));
+    if (N > 0) {
+      add('web', 'wt', 'Âme — traction, section nette', '6.2.3 (6.7)', N, 0.9 * (hw - G.n1 * d0) * S.tw * fub / gam.M2);
+      if (G.n1 > 1) {
+        const Ant = ((G.n1 - 1) * G.p1 - (G.n1 - 1) * d0) * S.tw, Anv = 2 * (G.e2b + (G.n2 - 1) * G.p2 - (G.n2 - 0.5) * d0) * S.tw;
+        add('web', 'wbt', 'Âme — rupture en bloc sous N', '3.10.2 (3.9)', N, fub * Ant / gam.M2 + fyb * Anv / (Math.sqrt(3) * gam.M0));
+      }
+    }
+    R.max = R.checks.reduce((a, c) => Math.max(a, c.r), 0);
+    R.gov = R.checks.reduce((a, c) => (!a || c.r > a.r ? c : a), null);
+    return R;
+  }
+
+  function computeEnv(s) {
+    const n = Array.isArray(s.loads) && s.loads.length ? s.loads.length : 1;
+    const runs = []; for (let i = 0; i < n; i++) runs.push(compute(s, i));
+    const rows = [], idx = {};
+    runs.forEach((r, i) => (r.checks || []).forEach((c) => {
+      const key = c.grp + '|' + c.id;
+      if (!(key in idx)) { idx[key] = rows.length; rows.push(Object.assign({}, c, { idx: i, name: r.loadName })); }
+      else if (c.r > rows[idx[key]].r) rows[idx[key]] = Object.assign({}, c, { idx: i, name: r.loadName });
+    }));
+    const order = { bolts: 0, plate: 1, web: 2 };
+    rows.sort((a, b) => order[a.grp] - order[b.grp]);
+    const max = rows.reduce((a, c) => Math.max(a, c.r), 0);
+    const gov = rows.reduce((a, c) => (!a || c.r > a.r ? c : a), null);
+    // résistance de l'attache à l'effort tranchant seul (taux linéaire en V)
+    let VRd = null;
+    if (runs[0].valid) {
+      const s2 = JSON.parse(JSON.stringify(s)); s2.loads = [{ name: 'V seul', V: 100, N: 0 }]; s2.cur = 0;
+      const r2 = compute(s2, 0); if (r2.max > 0) VRd = 100 / r2.max;
+    }
+    return { runs, rows, max, gov, govIdx: gov ? gov.idx : 0, valid: runs.every((r) => r.valid), perLoad: runs.map((r) => r.max), VRd };
+  }
+
+  function summary(st) {
+    try {
+      const E = computeEnv(st), r = E.runs[0];
+      return { type: 'Plat soudé', sec: r.S ? `${r.S.name} · ${E.runs[0].geo.n1}×${E.runs[0].geo.n2} M${r.bolt.d} ${r.bolt.cls}` : '—', gov: E.gov ? E.gov.label.replace(/\s*\(.*$/, '') : '', max: E.valid ? E.max : null };
+    } catch (e) { return null; }
+  }
+
+  window.FirmitasFinCalc = { compute, computeEnv, defaultState, upgrade, summary, geometry };
+})();

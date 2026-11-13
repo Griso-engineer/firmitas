@@ -22,6 +22,7 @@
 <script src="js/store.js"></script>
 <script src="js/xl-ref.js"></script>
 <script src="js/eclisse-calc.js"></script>
+<script src="js/platsoude-calc.js"></script>
 <script>
 (function () {
   const E = FirmitasEC3, ST = FirmitasStore, D = FIRMITAS_DATA, G = FirmitasGeom, X = FIRMITAS_XLREF;
@@ -187,6 +188,24 @@
   const kBolt = 1 / (1 / k11 + 1 / k12(14, 45, 490) + 1 / (2 * k12(10, 40, 490)));
   const kfl = 1 / (2 / (6 * kBolt) + 100 / (300 * 10 + 2 * 110 * 10));
   check('S_j,ini = E·z²/(1/k_sup + 1/k_inf), tableau 6.11 [MN·m/rad]', er.rig.Sj / 1e9, 210000 * 276 * 276 / (2 / kfl) / 1e9);
+
+  // ------------------------------------------------------------------
+  // E. Attache par plat soudé — calculs manuels
+  // ------------------------------------------------------------------
+  title('E · Plat soudé — IPE 360, plat 290 × 10, 4 × M20 8.8, z = 50 mm');
+  const FC = FirmitasFinCalc;
+  const fs0 = () => { const s = FC.defaultState(); s.loads = [{ name: 'T', V: 180, N: 0 }]; s.cur = 0; s.plate.zTop = 35; return s; };
+  let fsS = fs0(), fr = FC.compute(fsS);
+  const Ipf = 2 * (105 * 105 + 35 * 35), Mf = 180e3 * 50;
+  check('Boulon d\'angle : √((V·z·105/Σt²)² + (V/4)²) [kN]', fr.forces[fr.imax].f / 1e3, Math.hypot(Mf * 105 / Ipf, 180e3 / 4) / 1e3);
+  const byId = (r, g, id) => r.checks.find((c) => c.grp === g && c.id === id);
+  check('Plat : V_pl,Rd = h_p·t_p·f_y/√3 = 290·10·355/√3 [kN]', byId(fr, 'plate', 'pv').Rd / 1e3, 290 * 10 * 355 / Math.sqrt(3) / 1e3);
+  check('Plat : section nette (290 − 4·22)·10·490/(√3·1,25) [kN]', byId(fr, 'plate', 'pvn').Rd / 1e3, (290 - 88) * 10 * 490 / (Math.sqrt(3) * 1.25) / 1e3);
+  check('Plat : rupture en bloc 0,5·f_u·A_nt/γ_M2 + f_y·A_nv/(√3·γ_M0) [kN]', byId(fr, 'plate', 'pbt').Rd / 1e3, (0.5 * 490 * (45 - 11) * 10 / 1.25 + 355 * (40 + 210 - 3.5 * 22) * 10 / Math.sqrt(3)) / 1e3);
+  check('Plat : flexion à la soudure V·z/(t·h²/6·f_y)', byId(fr, 'plate', 'pm').r, Math.max(Mf / (10 * 290 * 290 / 6 * 355), 0));
+  fsS.loads[0] = { name: 'T', V: 0, N: 100 }; fr = FC.compute(fsS);
+  check('N = 100 kN seul : effort par boulon = N/4 [kN]', fr.forces[0].f / 1e3, 25);
+  check('Âme : traction nette 0,9·(h_w − 4·d_0)·t_w·f_u/γ_M2 [kN]', byId(fr, 'web', 'wt').Rd / 1e3, 0.9 * (360 - 2 * 12.7 - 88) * 8 * 490 / 1.25 / 1e3);
 
   const lib = []; let nLib = 0, nBad = 0;
   const props = [['A', 6], ['Iy', 7], ['Wely', 8], ['Wply', 9], ['Avz', 10], ['Iz', 11], ['Welz', 12], ['Wplz', 13], ['It', 14]];
