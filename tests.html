@@ -21,7 +21,7 @@
 <script src="js/ec3.js?v=7de645d2"></script>
 <script src="js/store.js?v=98792fe1"></script>
 <script src="js/xl-ref.js?v=436b5782"></script>
-<script src="js/eclisse-calc.js?v=86442ac2"></script>
+<script src="js/eclisse-calc.js?v=d8924dcd"></script>
 <script src="js/platsoude-calc.js?v=e6bd78d6"></script>
 <script src="js/platines-calc.js?v=0f796c14"></script>
 <script>
@@ -176,6 +176,10 @@
   es.bolt.holes = 'oversize'; er = SC.compute(es);
   check('Trous surdimensionnés M20 : d₀ = 24 mm (EN 1090-2)', er.bolt.d0, 24);
   check('… F_b,Rd × 0,8 (tab. 3.4 note 2)', er.groups.top.plies[0].bx.kb, 0.8);
+  es = e0(); es.load.My = 100; er = SC.compute(es);
+  check("Plats intérieurs, c_i automatique (laminé) = r + 2 : bord intérieur à t_w/2 + r + 2 [mm]", er.groups.top.plate.tIn0, 8.5 / 2 + 27 + 2);
+  es.top.ci = 40; er = SC.compute(es);
+  check("c_i saisi = 40 mm : bord intérieur à t_w/2 + 40, semelle inf. inchangée [mm]", er.groups.top.plate.tIn0 + er.groups.bot.plate.tIn0, 8.5 / 2 + 40 + 8.5 / 2 + 29);
   es = e0(); es.load.My = 100; es.fl.e1b = 20; er = SC.compute(es);
   check('Pince e₁ = 20 mm < 1,2·d₀ : contrôle géométrique bloquant (taux > 1)', er.max > 1 ? 1 : 0, 1);
   es = e0(); es.web.tp = 0; er = SC.compute(es);

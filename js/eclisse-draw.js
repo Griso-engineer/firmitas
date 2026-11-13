@@ -170,7 +170,7 @@
   function section(R, W = 440, H = 360) {
     const S = R.S, G = R.groups, top = G.top.plate, bot = G.bot.plate, wp = G.web.plate, fl = R.geo.fl, wb = R.geo.web;
     const Ht = S.h + top.to + bot.to, Bt = Math.max(S.b, top.bo, bot.bo);
-    const k = Math.min((H - 100) / Ht, (W - 150) / Bt);
+    const k = Math.min((H - 124) / Ht, (W - 150) / Bt);
     const cx = 82 + Bt * k / 2, cy = 62 + (top.to + S.h / 2) * k;   // 62 : place pour le titre et la cote b_o au-dessus
     const X = (y) => cx + y * k, Z = (z) => cy - z * k;
     const h2 = S.h / 2;
@@ -198,7 +198,13 @@
     if (G.bot.dbl) s += dimV(Z(-h2 + S.tf + bot.ti), Z(-h2 + S.tf), X(Bt / 2) + 12, `t_i = ${fmt(bot.ti, 1)}`, { ext: X(bot.tIn0 + bot.bi) });
     s += dimV(Z(wp.hp / 2), Z(-wp.hp / 2), X(-Bt / 2) - 14, `h_p = ${fmt(wp.hp)}`, { ext: X(-S.tw / 2 - wp.tp), left: true });
     s += T(X(S.tw / 2 + wp.tp) + 4, Z(wp.hp / 2) + 12, `t_p = ${fmt(wp.tp, 1)}`.replace('t_p', 't<tspan baseline-shift="sub" font-size="75%">p</tspan>'), { fs: 8.5, col: DIM });
-    if (G.top.dbl || G.bot.dbl) { const P = G.top.dbl ? top : bot; s += T(X(-P.tIn0 - P.bi) - 3, Z(G.top.dbl ? h2 - S.tf - P.ti : -h2 + S.tf + P.ti) + (G.top.dbl ? 3 : 6), `b_i = ${fmt(P.bi)}`.replace("b_i", "b<tspan baseline-shift=\"sub\" font-size=\"75%\">i</tspan>"), { fs: 8.5, col: DIM, a: "end" }); }
+    // plats intérieurs : cotes regroupées sous la coupe (la place manque entre âme, plats et boulons)
+    const sb = (t, i) => `${t}<tspan baseline-shift="sub" font-size="75%">${i}</tspan>`;
+    const pin = [['sup.', G.top.dbl, top], ['inf.', G.bot.dbl, bot]].filter((q) => q[1]);
+    if (pin.length) {
+      const same = pin.length === 2 && top.bi === bot.bi && top.tIn0 === bot.tIn0;
+      (same ? [pin[0]] : pin).forEach(([n, , P], i) => { s += T(8, Z(-h2 - bot.to) + 34 + 12 * i, `plats intérieurs${same ? "" : " " + n} : ${sb("b", "i")} = ${fmt(P.bi)}, ${sb("c", "i")} = ${fmt(P.tIn0 - S.tw / 2, 1)}`, { fs: 8.5, col: DIM }); });
+    }
     s += T(8, 16, 'Coupe transversale', { fw: 800, fs: 11.5 });
     s += T(8, 30, `${S.name} · y horizontal, z vertical`, { fw: 500, fs: 9.5, col: MUTED });
     return svgWrap(W, H, s);

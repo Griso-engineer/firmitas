@@ -52,8 +52,8 @@
       gam: { M0: 1, M2: 1.25, M3: 1.25, M3ser: 1.1 },
       gap: 10, myShare: 'inertie',
       fl: { n1: 3, p1: 70, e1: 40, e1b: 45, n2s: 1, w: 160, p2: 60 },
-      top: { double: true, bo: 300, to: 10, bi: 110, ti: 10, pack: 0 },
-      bot: { double: true, bo: 300, to: 10, bi: 110, ti: 10, pack: 0 },
+      top: { double: true, bo: 300, to: 10, bi: 110, ti: 10, ci: '', pack: 0 },
+      bot: { double: true, bo: 300, to: 10, bi: 110, ti: 10, ci: '', pack: 0 },
       web: { n1: 3, p1: 60, e1: 40, e1b: 45, n2: 3, p2: 65, hp: 190, tp: 10 },
       cur: 0,
       loads: [
@@ -85,6 +85,11 @@
     const S = D.findSection(c.fam, c.name);
     return S && S.type === 'I' ? S : null;
   }
+
+  // distance c_i du nu de l'âme au bord intérieur des plats intérieurs : saisie, ou par défaut
+  // r + 2 mm (profil laminé : dégagement du congé) ou 10 mm (PRS : place du cordon âme–semelle)
+  const ciAuto = (S) => (S.r > 0 ? S.r + 2 : 10);
+  const ciOf = (s, k, S) => { const v = s[k] ? s[k].ci : ''; return v === '' || v == null || !Number.isFinite(parseFloat(String(v).replace(',', '.'))) ? ciAuto(S) : Math.max(0, num(v)); };
 
   // ---------- géométrie des groupes de boulons (un côté du joint) ----------
   // Repère local : x le long de la poutre depuis l'axe du joint, t transversal (y pour les semelles, z pour l'âme).
@@ -249,7 +254,7 @@
       const P = s[k], dbl = !!P.double;
       const bo = num(P.bo), to = num(P.to), bi = num(P.bi), ti = num(P.ti);
       const nPl = dbl ? 2 : 1;
-      const tIn0 = S.tw / 2 + S.r + 2;                        // bord intérieur des plats intérieurs (2 mm de jeu au congé)
+      const tIn0 = S.tw / 2 + ciOf(s, k, S);                   // bord intérieur des plats intérieurs (c_i depuis le nu de l'âme)
       const Ao = bo * to, Ai = dbl ? 2 * bi * ti : 0;
       const shO = Ao / (Ao + Ai), shI = 1 - shO;
       const tmax = Math.max(...FG.ts.map(Math.abs)), tmin = Math.min(...FG.ts.map(Math.abs));
@@ -269,7 +274,7 @@
           W: to * bo * bo / 6 + (dbl ? 2 * (ti * Math.pow(bi, 3) / 12 + ti * bi * Math.pow(tIn0 + bi / 2, 2)) / (bo / 2) : 0),
           fy: fyp(Math.max(to, dbl ? ti : 0)), fu: fup(Math.max(to, dbl ? ti : 0)), tmin: dbl ? Math.min(to, ti) : to }
       };
-      if (dbl) geoC(k, 'g_bi', 'Géométrie — plats intérieurs dans la largeur de semelle', tIn0 + bi, S.b / 2, `t_congé + b_i = ${(tIn0 + bi).toFixed(0)} mm ≤ b/2 = ${(S.b / 2).toFixed(0)} mm`);
+      if (dbl) geoC(k, 'g_bi', 'Géométrie — plats intérieurs dans la largeur de semelle', tIn0 + bi, S.b / 2, `t_w/2 + c_i + b_i = ${(tIn0 + bi).toFixed(0)} mm ≤ b/2 = ${(S.b / 2).toFixed(0)} mm`);
       if (dbl) geoC(k, "g_hi0", "Géométrie — trous dégagés du bord intérieur des plats intérieurs", tIn0, tmin - d0 / 2, `bord du trou ${(tmin - d0 / 2).toFixed(0)} mm ≥ bord du plat ${tIn0.toFixed(0)} mm`);
       if (dbl) geoC(k, "g_hi", "Géométrie — trous contenus dans les plats intérieurs", tmax + d0 / 2, tIn0 + bi, `bords des trous : ${(tmin - d0 / 2).toFixed(0)} à ${(tmax + d0 / 2).toFixed(0)} mm ; plats : ${tIn0.toFixed(0)} à ${(tIn0 + bi).toFixed(0)} mm`);
       geoC(k, 'g_ho', 'Géométrie — trous contenus dans le plat extérieur', tmax + d0 / 2, bo / 2, `t_max + d₀/2 = ${(tmax + d0 / 2).toFixed(0)} mm ≤ b_o/2 = ${(bo / 2).toFixed(0)} mm`);
@@ -440,7 +445,7 @@
     const STD = [6, 8, 10, 12, 15, 20, 25, 30, 35, 40, 50, 60];
     const up = (t) => STD.find((x) => x >= t - 1e-9) || Math.ceil(t / 5) * 5;
     const r5 = (x) => Math.floor(x / 5) * 5;
-    const tIn0 = S.tw / 2 + S.r + 2;
+    const tIn0 = S.tw / 2 + Math.max(ciOf(s, 'top', S), ciOf(s, 'bot', S));
     const bo = r5(S.b), bi = r5(S.b / 2 - tIn0 - 5);
     const roomIn = bi >= 2 * Math.ceil(1.2 * d0);          // place pour des plats intérieurs
     // ligne de boulons : au milieu des plats intérieurs, ou entre le congé (+ rondelle) et la pince de bord
@@ -495,5 +500,5 @@
     } catch (e) { return null; }
   }
 
-  window.FirmitasSpliceCalc = { HOLES, d0Hole, groupForces, bearing, compute, computeEnv, propose, defaultState, upgrade, summary, BOLTS, CLASSES, MU, KS, COMPS, GROUPS, d0Of, fuOf, num, beamOf };
+  window.FirmitasSpliceCalc = { ciOf, ciAuto, HOLES, d0Hole, groupForces, bearing, compute, computeEnv, propose, defaultState, upgrade, summary, BOLTS, CLASSES, MU, KS, COMPS, GROUPS, d0Of, fuOf, num, beamOf };
 })();

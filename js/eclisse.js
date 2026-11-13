@@ -202,7 +202,7 @@
     const plateBlock = (k, lbl) => `<div><div class="sub-title">${lbl}</div>
       <div style="margin-bottom:10px">${chk(k + '.double', 'Plat dédoublé : plat extérieur + 2 plats intérieurs (double recouvrement)', true)}</div>
       <div class="fields">${field('Plat extérieur b<sub>o</sub>', inp(k + '.bo'), 'mm')}${field('t<sub>o</sub>', inp(k + '.to'), 'mm')}
-      ${st[k].double ? field('Plats intérieurs b<sub>i</sub>', inp(k + '.bi'), 'mm', 'Chacun, posés contre le congé') + field('t<sub>i</sub>', inp(k + '.ti'), 'mm') : ''}
+      ${st[k].double ? field('Plats intérieurs b<sub>i</sub>', inp(k + '.bi'), 'mm', 'Largeur de chacun') + field('t<sub>i</sub>', inp(k + '.ti'), 'mm') + field('Distance à l’âme c<sub>i</sub>', inp(k + '.ci', { ph: R && R.S ? 'auto ' + fmtG(C.ciAuto(R.S), 1) : 'auto' }), 'mm', 'Du nu de l’âme au bord des plats intérieurs ; vide : r + 2 mm (laminé) ou 10 mm (PRS)') : ''}
       ${field('Fourrure t<sub>p</sub>', inp(k + '.pack'), 'mm', 'Profils de hauteurs différentes : β<sub>p</sub> si t<sub>p</sub> &gt; d/3 (3.6.1 (12))')}</div></div>`;
     const { p } = A().crumbK('eclisse');
     app.innerHTML = `<div class="page">
@@ -273,7 +273,7 @@
         <tr><td><b>p<sub>1</sub></b></td><td>entraxe des files, parallèle à la poutre</td><td><b>e<sub>1</sub></b></td><td>pince longitudinale sur le plat : de la dernière file au bout du plat</td></tr>
         <tr><td><b>w</b></td><td>entraxe des lignes de semelle de part et d'autre de l'âme</td><td><b>p<sub>2</sub></b></td><td>entraxe transversal (2<sup>e</sup> ligne de semelle, rangées d'âme)</td></tr>
         <tr><td><b>e<sub>2</sub></b></td><td>pince transversale : de la ligne extrême au bord du plat</td><td><b>b<sub>o</sub>, t<sub>o</sub></b></td><td>largeur et épaisseur du plat extérieur de semelle</td></tr>
-        <tr><td><b>b<sub>i</sub>, t<sub>i</sub></b></td><td>largeur et épaisseur de chaque plat intérieur (posé contre le congé)</td><td><b>h<sub>p</sub>, t<sub>p</sub></b></td><td>hauteur et épaisseur de chaque plat d'âme</td></tr>
+        <tr><td><b>b<sub>i</sub>, t<sub>i</sub></b></td><td>largeur et épaisseur de chaque plat intérieur ; <b>c<sub>i</sub></b> : distance du nu de l'âme à son bord intérieur</td><td><b>h<sub>p</sub>, t<sub>p</sub></b></td><td>hauteur et épaisseur de chaque plat d'âme</td></tr>
       </tbody></table></div>
 
       ${blockHead('04', 'Torseurs ELU', "Un torseur par combinaison à vérifier (M<sub>max</sub>, V<sub>max</sub>, N<sub>max</sub> concomitants…), à la section du joint. N &gt; 0 : compression ; M<sub>y</sub> &gt; 0 comprime la semelle supérieure ; M<sub>z</sub> &gt; 0 comprime le côté +y ; M<sub>x</sub> : torsion. Un bloc copié depuis Excel ou RFEM se colle dans le tableau.")}
