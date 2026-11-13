@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap">
-  <link rel="stylesheet" href="css/style.css?v=a645405c">
+  <link rel="stylesheet" href="css/style.css?v=63bd72ea">
 </head>
 <body>
   <div class="rail" aria-hidden="true">
@@ -19,6 +19,7 @@
     <span>NF EN 1993-1-1 · AN</span>
   </div>
 
+  <div class="masthead" id="masthead">
   <header class="top">
     <a class="logo" href="#/verification" aria-label="Firmitas, accueil">firmitas<i>.</i></a>
     <div class="top-meta" id="topMeta"></div>
@@ -34,6 +35,7 @@
     <a href="#/detail" data-route="detail" class="minor">Détail</a>
     <a href="#/methode" data-route="methode" class="minor">Méthode</a>
   </nav>
+  </div>
 
   <main id="app"></main>
 
@@ -68,5 +70,20 @@
   <script src="js/platines.js?v=80c8125e"></script>
   <script src="js/report.js?v=a1e4a850"></script>
   <script src="js/app.js?v=183f30d4"></script>
+  <script>
+    /* Bandeau fixe : hauteur exposée en CSS (--mast-h), version compacte après défilement */
+    (function () {
+      var m = document.getElementById('masthead'), root = document.documentElement;
+      var setH = function () { root.style.setProperty('--mast-h', m.offsetHeight + 'px'); };
+      /* hystérésis : le compactage réduit la hauteur du bandeau, on évite l'oscillation au seuil */
+      var onScroll = function () {
+        var y = window.scrollY, c = m.classList.contains('compact');
+        if (!c && y > 80) m.classList.add('compact'); else if (c && y < 10) m.classList.remove('compact');
+      };
+      if (window.ResizeObserver) new ResizeObserver(setH).observe(m); else window.addEventListener('resize', setH);
+      window.addEventListener('scroll', onScroll, { passive: true });
+      setH(); onScroll();
+    })();
+  </script>
 </body>
 </html>

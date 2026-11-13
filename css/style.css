@@ -70,12 +70,23 @@ sub { font-size: 0.72em; }
 .tool-tabs a.active { color: var(--ink); border-bottom-color: var(--ink); }
 .tool-tabs a.minor { font-size: clamp(13px, 1.2vw, 15px); font-weight: 700; align-self: flex-end; }
 
+/* Bandeau fixe (logo + onglets), compacté après défilement */
+:root { --mast-h: 0px; }
+html { scroll-padding-top: calc(var(--mast-h) + 64px); }
+.masthead { position: sticky; top: 0; z-index: 25; background: var(--paper); border-bottom: 1px solid transparent; transition: border-color .2s; }
+.masthead .top, .masthead .tool-tabs { transition: padding .2s; }
+.masthead .logo { transition: font-size .2s; }
+.masthead.compact { border-bottom-color: var(--rule); }
+.masthead.compact .top { padding-top: 10px; }
+.masthead.compact .logo { font-size: 30px; }
+.masthead.compact .tool-tabs { padding-top: 8px; }
+
 main#app { flex: 1; width: 100%; min-width: 0; }
 .page { padding: clamp(24px, 4vh, 48px) var(--pad) clamp(56px, 10vh, 110px); }
 
 /* ---------- Barre d'action (vérification) ---------- */
 .actionbar {
-  position: sticky; top: 0; z-index: 20; background: var(--paper);
+  position: sticky; top: var(--mast-h); z-index: 20; background: var(--paper);
   display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center;
   padding: 12px 0; border-bottom: 1px solid var(--rule); margin-bottom: 8px;
 }
