@@ -168,9 +168,15 @@
       const In = tp * (Math.pow(G.hp, 3) / 12 - G.pts.filter((q) => q.x === G.a).reduce((a, q) => a + d0 * d0 * d0 / 12 + d0 * q.t * q.t, 0));
       const Wn = In / (G.hp / 2);
       const M0 = Math.abs(V) * G.zc, M1 = Math.abs(V) * Math.max(0, G.zc - G.a);
-      const etaG = Math.abs(N) / (Ap * fr) + M0 / (W * fr);
-      const etaN = Math.abs(N) / (Apn * fr) + M1 / (Wn * fr);
-      add('plate', 'pm', `Plat — flexion + effort normal (soudure : M = ${(M0 / 1e6).toFixed(2)} kN·m ; 1ʳᵉ file, nette : ${(M1 / 1e6).toFixed(2)} kN·m${rho > 0 ? ', ρ = ' + rho.toFixed(3) : ''})`, '6.2.1 (6.2) · 6.2.8', Math.max(etaG, etaN), 1, { ratioOnly: true });
+      // excentricité hors plan (recouvrement simple) : N agit dans le plan moyen de l'âme, à e_z = (t_w + t_p)/2
+      // du plan moyen du plat ; M_z repris en totalité par le plat, constant de la file à la soudure (sécuritaire)
+      const ez = (S.tw + tp) / 2, Mz = Math.abs(N) * ez;
+      const Wz = G.hp * tp * tp / 4, Wzn = (G.hp - G.n1 * d0) * tp * tp / 4;   // modules plastiques hors plan
+      R.ez = ez; R.Mz = Mz; R.Wz = Wz; R.Wzn = Wzn;
+      const etaG = Math.abs(N) / (Ap * fr) + M0 / (W * fr) + Mz / (Wz * fr);
+      const etaN = Math.abs(N) / (Apn * fr) + M1 / (Wn * fr) + Mz / (Wzn * fr);
+      add('plate', 'pm', `Plat — flexion + effort normal (soudure : M = ${(M0 / 1e6).toFixed(2)} kN·m ; 1ʳᵉ file, nette : ${(M1 / 1e6).toFixed(2)} kN·m${Mz > 0 ? ` ; hors plan M_z = N·(t_w+t_p)/2 = ${(Mz / 1e6).toFixed(2)} kN·m` : ''}${rho > 0 ? ', ρ = ' + rho.toFixed(3) : ''})`, '6.2.1 (6.2) (7) · 6.2.8', Math.max(etaG, etaN), 1, { ratioOnly: true, note: Mz > 0 ? `e_z = ${ez.toFixed(1)} mm ; W_z = h_p·t_p²/4 = ${(Wz / 1e3).toFixed(2)} cm³ ; W_z,n = (h_p − n₁·d₀)·t_p²/4 = ${(Wzn / 1e3).toFixed(2)} cm³ ; interaction linéaire N/N_Rd + M/M_Rd + M_z/M_z,Rd` : '' });
+      if (Mz > 0) R.info.push(`Excentricité hors plan : M_z = N·(t_w + t_p)/2 = ${(Mz / 1e6).toFixed(2)} kN·m (e_z = ${ez.toFixed(1)} mm) entièrement repris par le plat (sécuritaire ; avec une seule colonne de boulons, une part de ce moment est en réalité reprise en flexion d'axe faible par la poutre portée). La torsion V·e n'est pas vérifiée (couverte par h_p ≥ 0,6·h et le maintien latéral, SCI P358).`);
     }
     if (N > 0) {
       add('plate', 'pt', 'Plat — traction, section brute', '6.2.3 (6.6)', N, Ap * fyp / gam.M0);

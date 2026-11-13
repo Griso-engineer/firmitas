@@ -22,7 +22,7 @@
 <script src="js/store.js?v=98792fe1"></script>
 <script src="js/xl-ref.js?v=436b5782"></script>
 <script src="js/eclisse-calc.js?v=d8924dcd"></script>
-<script src="js/platsoude-calc.js?v=486cfa16"></script>
+<script src="js/platsoude-calc.js?v=994c2e9c"></script>
 <script src="js/platines-calc.js?v=995ccb04"></script>
 <script src="js/soudure-calc.js?v=8961c627"></script>
 <script src="js/boulons-calc.js?v=60d8f97b"></script>
@@ -226,6 +226,14 @@
   check('Âme : pince verticale = distance de la file extrême à la face intérieure de semelle = z_haut + e₁ − t_f [mm]', fr.eWeb, Math.min(35 + 40 - 12.7, 360 - 12.7 - (35 + 290 - 40)));
   fsS.bolts.e1 = 20; fr = FC.compute(fsS);
   check('Pince e₁ = 20 mm < 1,2·d₀ : contrôle géométrique bloquant', fr.max > 1 ? 1 : 0, 1);
+  {
+    // excentricité hors plan du plat (recouvrement simple) : M_z = N·(t_w + t_p)/2 repris par le plat
+    const sD = FC.defaultState(), r1 = FC.compute(sD, 0), r2 = FC.compute(sD, 1);
+    check('Hors plan : e_z = (t_w + t_p)/2 = (8 + 10)/2 [mm]', r2.ez, 9);
+    check('… ELU 2 (N = 75 kN) : M_z = N·e_z [kN·m]', r2.Mz / 1e6, 0.675);
+    check('… ELU 1 (N = 0) : plat flexion + N inchangé', byId(r1, 'plate', 'pm').r, 0.181, 5e-3);
+    check('… ELU 2 : taux plat avec M_z/(W_z·f_y), W_z,n = (h_p − n₁·d₀)·t_p²/4', byId(r2, 'plate', 'pm').r, 0.481, 5e-3);
+  }
   fsS = fs0(); fsS.plate.tp = 10; fsS.plateGrade = 'S355'; fsS.bolt.d = 20; fr = FC.compute(fsS);
   check('Ductilité S355 : t_p = 10 > 0,42·d = 8,4 mm signalé', fr.info.some((w) => /0,42·d/.test(w)) ? 1 : 0, 1);
 
