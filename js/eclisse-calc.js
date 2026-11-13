@@ -36,13 +36,14 @@
       v: 1, kind: 'eclisse', name: 'Éclisse E1',
       sec: { kind: 'cat', fam: 'HE A', name: 'HE 300 A', prs: { h: 600, b: 300, tw: 12, tf: 25 } },
       grade: 'S355', plateGrade: 'S355',
-      bolt: { d: 20, cls: '8.8', pre: false, cat: 'C', surf: 'B', holes: 'normal', threads: true, kser: 0.7 },
+      bolt: { d: 20, dw: 'same', cls: '8.8', pre: false, cat: 'C', surf: 'B', holes: 'normal', threads: true, kser: 0.7 },
+      rig: { Lb: 8, frame: 'braced' },
       gam: { M0: 1, M2: 1.25, M3: 1.25, M3ser: 1.1 },
       gap: 10, myShare: 'inertie',
       fl: { n1: 3, p1: 70, e1: 40, e1b: 45, n2s: 1, w: 160, p2: 60 },
       top: { double: true, bo: 300, to: 10, bi: 110, ti: 10, pack: 0 },
       bot: { double: true, bo: 300, to: 10, bi: 110, ti: 10, pack: 0 },
-      web: { n1: 2, p1: 60, e1: 40, e1b: 45, n2: 3, p2: 60, hp: 190, tp: 10 },
+      web: { n1: 3, p1: 60, e1: 40, e1b: 45, n2: 3, p2: 65, hp: 190, tp: 10 },
       cur: 0,
       loads: [
         { name: 'ELU 1 — M_y max', N: 50, Vy: 10, Vz: 150, Mx: 2, My: 250, Mz: 10 },
@@ -134,8 +135,43 @@
     return { ab, k1, Fb: k1 * ab * fu * d * t / gM2 };
   }
 
+  // ---------- raideur rotationnelle initiale (NF EN 1993-1-8 § 6.3, tableau 6.11) ----------
+  // Ressorts en série par semelle : boulons en cisaillement (k11), pression diamétrale sur chaque pli (k12),
+  // des deux côtés du joint, et plats tendus entre les premières files (A/L). Âme négligée (sécuritaire).
+  // S_j,ini = E·z² / Σ(1/k_i) avec z = h − t_f (6.27, μ = 1).
+  function stiffness(s, R, S, cat, fu, fup) {
+    const E = 210000, z = S.h - S.tf, dM16 = 16;
+    const preload = cat !== 'A';
+    const parts = {};
+    ['top', 'bot'].forEach((k) => {
+      const G = R.groups[k], B = G.B, d = B.d, geo = G.G, P = G.plate;
+      const nb = geo.pts.length;
+      const k11 = preload ? Infinity : 16 * d * d * B.fub / (E * dM16) * G.nPl;
+      const k12 = (t, eb, fuu) => {
+        if (preload) return Infinity;
+        const kb = Math.min(0.25 * eb / d + 0.5, geo.n1 > 1 ? 0.25 * geo.p1 / d + 0.375 : Infinity, 1.25);
+        return 24 * kb * Math.min(1.5 * t / dM16, 2.5) * d * fuu / E;
+      };
+      const kf = k12(S.tf, geo.e1b, fu);
+      const kp = k12(P.to, geo.e1, fup(P.to)) + (G.dbl ? k12(P.ti, geo.e1, fup(P.ti)) : 0);
+      const inv = (x) => (Number.isFinite(x) ? 1 / x : 0);
+      const kBolt = 1 / Math.max(1e-12, inv(k11) + inv(kf) + inv(kp));
+      const kSide = nb * kBolt;
+      const Lpl = R.g + 2 * geo.e1b;
+      const kPlate = P.A / Math.max(1, Lpl);
+      const flex = 2 * inv(kSide) + 1 / kPlate;
+      parts[k] = { k11, kf, kp, kBolt, kSide, kPlate, Lpl, keq: 1 / flex, nb };
+    });
+    const Sj = E * z * z / (1 / parts.top.keq + 1 / parts.bot.keq);
+    const rg = s.rig || {};
+    const Lb = num(rg.Lb, 8) * 1000, kb = rg.frame === 'unbraced' ? 25 : 8;
+    const EIL = E * S.Iy / Lb;
+    const cls = Sj >= kb * EIL ? 'rigide' : Sj <= 0.5 * EIL ? 'articulé' : 'semi-rigide';
+    return { E, z, parts, Sj, Lb, kb, EIL, rigidLim: kb * EIL, pinLim: 0.5 * EIL, cls, preload };
+  }
+
   // ======================================================================
-  const loadOf = (s, idx) => { const L = Array.isArray(s.loads) && s.loads.length ? s.loads : [{}]; return L[Math.max(0, Math.min(L.length - 1, idx == null ? (+s.cur || 0) : idx))]; };
+  const loadOf =(s, idx) => { const L = Array.isArray(s.loads) && s.loads.length ? s.loads : [{}]; return L[Math.max(0, Math.min(L.length - 1, idx == null ? (+s.cur || 0) : idx))]; };
   function compute(s, idx) {
     const LD = loadOf(s, idx);
     const R = { valid: true, warnings: [], checks: [] };
@@ -161,12 +197,27 @@
     const FG = flangeBolts(s, g), WG = webBolts(s, g);
     R.geo = { fl: FG, web: WG };
     // résistance d'un boulon au cisaillement (par plan) et réduction des joints longs (3.8)
-    const avA = R.bolt.threads ? bc.av * As : 0.6 * Ab;
-    const FvPlane = avA * bc.fub / gam.M2;
-    const betaLf = (Lj) => (Lj > 15 * d ? Math.max(0.75, Math.min(1, 1 - (Lj - 15 * d) / (200 * d))) : 1);
-    const FpC = 0.7 * bc.fub * As;
     const ks = KS[b.holes] || 1, mu = MU[b.surf] || 0.4;
-    R.bolt.FvPlane = FvPlane; R.bolt.FpC = FpC; R.bolt.ks = ks; R.bolt.mu = mu;
+    const BP = (dd) => {
+      const as = BOLTS[dd] || 245, ab = PI * dd * dd / 4;
+      const fv = (R.bolt.threads ? bc.av * as : 0.6 * ab) * bc.fub / gam.M2;
+      return { d: dd, d0: d0Of(dd), As: as, Ab: ab, FvPlane: fv, FpC: 0.7 * bc.fub * as, fub: bc.fub, cls: b.cls, threads: R.bolt.threads, ks, mu };
+    };
+    const dw = b.dw && b.dw !== 'same' ? num(b.dw, d) : d;
+    const BF = BP(d), BW = BP(dw);
+    Object.assign(R.bolt, BF); R.boltW = BW;
+    const FvPlane = BF.FvPlane, FpC = BF.FpC;
+    const betaLf = (Lj, dd) => (Lj > 15 * dd ? Math.max(0.75, Math.min(1, 1 - (Lj - 15 * dd) / (200 * dd))) : 1);
+    // Convention physique : M_y > 0 comprime la semelle sup. et V_z = dM_y/dx (poutre isostatique sous charge
+    // descendante : V_z > 0 près de l'appui gauche). Le moment au centre d'un groupe vaut M ± V·e selon le côté du joint :
+    // les deux côtés sont calculés et le plus sollicité est retenu.
+    const sided = (G, per, tq) => {
+      const mx = (a) => Math.max(...a.map((f) => f.f));
+      const r1 = groupForces(G, tq.Fx, tq.Ft, -tq.M), l1 = groupForces(G, tq.Fx, -tq.Ft, -tq.M);
+      const sg = mx(l1) > mx(r1) + 1e-6 ? -1 : 1;
+      const loads = {}; COMPS.forEach((c) => { const q = per[c.id]; loads[c.id] = groupForces(G, q.Fx, sg * q.Ft, -q.M); });
+      return { tot: sg > 0 ? r1 : l1, loads, side: sg };
+    };
 
     const comps = COMPS.map((c) => c.id);
     const groups = {};
@@ -186,12 +237,12 @@
         { id: 'outer', label: 'Plat extérieur', t: to, fu: fup(to), share: shO, eEnd: FG.e1, eEdge: bo / 2 - tmax }
       ];
       if (dbl) plies.push({ id: 'inner', label: 'Plats intérieurs', t: ti, fu: fup(ti), share: shI, eEnd: FG.e1, eEdge: Math.min(tmin - tIn0, tIn0 + bi - tmax) });
-      const loads = {}; comps.forEach((c) => { const q = dist.per[c][k]; loads[c] = groupForces(FG, q.Fx, q.Ft, q.M); });
       const tq = dist.tot[k];
-      const tot = groupForces(FG, tq.Fx, tq.Ft, tq.M);
+      const sd = sided(FG, Object.fromEntries(comps.map((c) => [c, dist.per[c][k]])), tq);
+      const loads = sd.loads, tot = sd.tot;
       const Lj = (FG.n1 - 1) * FG.p1;
       groups[k] = {
-        id: k, kind: 'flange', G: FG, dbl, nPl, plies, loads, tot, Lj, bL: betaLf(Lj), force: tq,
+        id: k, kind: 'flange', B: BF, side: sd.side, G: FG, dbl, nPl, plies, loads, tot, Lj, bL: betaLf(Lj, d), force: tq,
         plate: { bo, to, bi, ti, tIn0, A: Ao + Ai, Ao, Ai,
           Anet: Ao - FG.n2 * d0 * to + (dbl ? Ai - FG.n2 * d0 * ti : 0),
           W: to * bo * bo / 6 + (dbl ? 2 * (ti * Math.pow(bi, 3) / 12 + ti * bi * Math.pow(tIn0 + bi / 2, 2)) / (bo / 2) : 0),
@@ -205,6 +256,7 @@
 
     // --- âme
     {
+      const { d0 } = BW;
       const P = s.web, hp = num(P.hp), tp = num(P.tp);
       const zmax = Math.max(...WG.ts.map(Math.abs));
       const hw = S.h - 2 * S.tf;
@@ -212,11 +264,12 @@
         { id: 'beam', label: 'Âme de la poutre', t: S.tw, fu, share: 1, eEnd: WG.e1b, eEdge: hw / 2 - zmax },
         { id: 'plate', label: 'Plats d\'âme (×2)', t: tp, fu: fup(tp), share: 0.5, eEnd: WG.e1, eEdge: hp / 2 - zmax }
       ];
-      const loads = {}; comps.forEach((c) => { const q = dist.per[c].web; loads[c] = groupForces(WG, q.Fx, q.Ft, q.M); });
       const tq = dist.tot.web;
+      const sd = sided(WG, Object.fromEntries(comps.map((c) => [c, dist.per[c].web])), tq);
+      const loads = sd.loads;
       const Lj = (WG.n1 - 1) * WG.p1;
       groups.web = {
-        id: 'web', kind: 'web', G: WG, nPl: 2, plies, loads, tot: groupForces(WG, tq.Fx, tq.Ft, tq.M), Lj, bL: betaLf(Lj), force: tq,
+        id: 'web', kind: 'web', B: BW, side: sd.side, G: WG, nPl: 2, plies, loads, tot: sd.tot, Lj, bL: betaLf(Lj, dw), force: tq,
         plate: { hp, tp, A: 2 * hp * tp, Anet: 2 * (hp - WG.n2 * d0) * tp, W: 2 * tp * hp * hp / 6, fy: fyp(tp), fu: fup(tp) }
       };
       if (hp > hw - 2 * S.r + 1e-6) R.warnings.push(`Âme : la hauteur des plats (${hp} mm) dépasse la hauteur droite entre congés (${(hw - 2 * S.r).toFixed(0)} mm).`);
@@ -228,6 +281,7 @@
     const minChk = (lbl, v, lim) => { if (v < lim - 1e-6) R.warnings.push(`${lbl} = ${v.toFixed(1)} mm < ${lim.toFixed(1)} mm (EN 1993-1-8 tableau 3.3).`); };
     ['top', 'bot', 'web'].forEach((k) => {
       const G = groups[k], nm = k === 'web' ? 'Âme' : k === 'top' ? 'Semelle sup.' : 'Semelle inf.';
+      const { d0 } = G.B;
       G.plies.forEach((p) => { minChk(`${nm} · ${p.label.toLowerCase()} : pince longitudinale e₁`, p.eEnd, 1.2 * d0); minChk(`${nm} · ${p.label.toLowerCase()} : pince transversale e₂`, p.eEdge, 1.2 * d0); });
       if (G.G.n1 > 1) minChk(`${nm} : entraxe p₁`, G.G.p1, 2.2 * d0);
       if (k === 'web' && G.G.n2 > 1) minChk(`${nm} : entraxe p₂`, G.G.p2, 2.4 * d0);
@@ -242,7 +296,8 @@
     };
     const fyb = fy;
     ['top', 'web', 'bot'].forEach((k) => {
-      const G = groups[k], gl = GROUPS.find((x) => x.id === k).label;
+      const G = groups[k];
+      const { d, d0, FvPlane, FpC } = G.B;
       const imax = G.tot.reduce((a, f, i) => (f.f > G.tot[a].f ? i : a), 0);
       const fm = G.tot[imax];
       G.imax = imax;
@@ -295,7 +350,7 @@
         const rho = Math.abs(F.Ft) > 0.5 * Vpl ? Math.pow(2 * Math.abs(F.Ft) / Vpl - 1, 2) : 0;
         add(k, 'pv', 'Plats — cisaillement transversal', '6.2.6', F.Ft, Vpl);
         if (Math.abs(F.M) > 0 || Math.abs(F.Ft) > 0) {
-          const Mnet = Math.abs(F.M + F.Ft * xc0);
+          const Mnet = (Math.abs(F.M) + Math.abs(F.Ft) * xc0);
           const etaG = Math.abs(F.Fx) / (PL.A * fyP * (1 - rho) / gam.M0) + Math.abs(F.M) / (PL.W * fyP * (1 - rho) / gam.M0);
           const etaN = Math.abs(F.Fx) / (PL.Anet * fyP / gam.M0) + Mnet / (PL.W * PL.Anet / PL.A * fyP / gam.M0);
           add(k, 'pm', `Plats — effort axial + flexion dans le plan (joint : M = ${(F.M / 1e6).toFixed(2)} kN·m ; 1ʳᵉ file, nette : ${(Mnet / 1e6).toFixed(2)} kN·m)`, '6.2.1 (6.2)', Math.max(etaG, etaN), 1, { ratioOnly: true });
@@ -320,7 +375,7 @@
         add(k, 'pv', 'Plats d\'âme — cisaillement, section brute', '6.2.6 (6.18)', F.Ft, Vpl);
         add(k, 'pvn', 'Plats d\'âme — cisaillement, section nette', '6.2.6 · 3.10.2', F.Ft, Vnet);
         const rho = Math.abs(F.Ft) > 0.5 * Vpl ? Math.pow(2 * Math.abs(F.Ft) / Vpl - 1, 2) : 0;
-        const Mnet = Math.abs(F.M + F.Ft * xc0);
+        const Mnet = (Math.abs(F.M) + Math.abs(F.Ft) * xc0);
         const fyr = fyP * (1 - rho) / gam.M0;
         const etaG = Math.abs(F.Fx) / (PL.A * fyr) + Math.abs(F.M) / (PL.W * fyr);
         const Wn = 2 * PL.tp * (Math.pow(PL.hp, 3) / 12 - G.G.ts.reduce((a, z) => a + d0 * d0 * d0 / 12 + d0 * z * z, 0)) / (PL.hp / 2);
@@ -339,6 +394,7 @@
       const Fb = Math.min(...G.plies.map((p) => Math.min(p.bx.Fb, p.bt.Fb) / p.share));
       G.plast = cat === 'C' || G.Fv > Fb;
     });
+    R.rig = stiffness(s, R, S, cat, fu, fup);
     R.info = [];
     if (cat === 'A') R.info.push('Catégorie A : le jeu des trous permet un glissement, d’où une rotation et une flèche supplémentaires au joint. Pour une éclisse de continuité, envisager des boulons précontraints (catégorie B) ou ajustés.');
     if (s.top.pack > 0 || s.bot.pack > 0) R.info.push('Fourrures sous les plats de semelles : réduction β_p appliquée au cisaillement des boulons au-delà de t_p = d/3 (3.6.1 (12)).');
@@ -369,9 +425,11 @@
     });
     const Af = S.b * S.tf, n1 = Math.min(8, Math.max(2, Math.ceil(0.9 * Af * D.fyOf(s.grade, S.tf, 'en10025') / (2 * 0.6 * CLASSES[s.bolt.cls].fub * (BOLTS[d] || 245) / 1.25) / 2)));
     Object.assign(s.fl, { n1, p1: p, e1: e, e1b: e, n2s: 1, w });
-    const hw = S.h - 2 * S.tf, hp = Math.max(r5(hw - 2 * S.r - 10), 2 * e);
-    const n2 = Math.max(1, Math.floor((hp - 2 * e) / p) + 1), p2 = n2 > 1 ? r5((hp - 2 * e) / (n2 - 1)) : p;
-    Object.assign(s.web, { n1: 2, p1: p, e1: e, e1b: e, n2, p2, hp, tp: up(Math.max(S.tw * hw / (2 * hp), S.tw * Math.pow(hw, 3) / (2 * Math.pow(hp, 3)))) });
+    const dW = s.bolt.dw && s.bolt.dw !== 'same' ? num(s.bolt.dw, d) : d, d0w = d0Of(dW);
+    const ew = Math.ceil(1.5 * d0w / 5) * 5, pw = Math.ceil(3 * d0w / 5) * 5;
+    const hw = S.h - 2 * S.tf, hp = Math.max(r5(hw - 2 * S.r - 10), 2 * ew);
+    const n2 = Math.max(1, Math.floor((hp - 2 * ew) / pw) + 1), p2 = n2 > 1 ? r5((hp - 2 * ew) / (n2 - 1)) : pw;
+    Object.assign(s.web, { n1: 2, p1: pw, e1: ew, e1b: ew, n2, p2, hp, tp: up(Math.max(S.tw * hw / (2 * hp), S.tw * Math.pow(hw, 3) / (2 * Math.pow(hp, 3)))) });
     return true;
   }
 
@@ -389,7 +447,16 @@
     rows.sort((a, b) => order[a.grp] - order[b.grp]);
     const max = rows.reduce((a, c) => Math.max(a, c.r), 0);
     const gov = rows.reduce((a, c) => (!a || c.r > a.r ? c : a), null);
-    return { runs, rows, max, gov, govIdx: gov ? gov.idx : 0, valid: runs.every((r) => r.valid), perLoad: runs.map((r) => r.max) };
+    // résistance en flexion de l'assemblage : M_y seul, taux linéaire en M (100 kN·m de référence)
+    let MjRd = null, Mpl = null, govM = null;
+    if (runs[0].valid) {
+      const s2 = JSON.parse(JSON.stringify(s)); s2.loads = [{ name: 'M_y seul', N: 0, Vy: 0, Vz: 0, Mx: 0, My: 100, Mz: 0 }]; s2.cur = 0;
+      const r2 = compute(s2, 0);
+      if (r2.max > 0) { MjRd = 100 / r2.max; govM = r2.gov; }
+      const S = runs[0].S;
+      Mpl = S.Wply * D.fyOf(s.grade, S.tf, 'en10025') / (num(s.gam.M0, 1) || 1) / 1e6;
+    }
+    return { runs, rows, max, gov, govIdx: gov ? gov.idx : 0, valid: runs.every((r) => r.valid), perLoad: runs.map((r) => r.max), MjRd, Mpl, govM, rig: runs[0].rig };
   }
 
   function summary(st) {

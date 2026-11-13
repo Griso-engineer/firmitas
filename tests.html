@@ -134,7 +134,7 @@
   // ------------------------------------------------------------------
   title('D · Éclisse boulonnée — calculs manuels');
   const SC = FirmitasSpliceCalc;
-  const e0 = () => { const s = SC.defaultState(); Object.keys(s.load).forEach((k) => { s.load[k] = 0; }); return s; };
+  const e0 = () => { const s = SC.defaultState(); s.loads = [{ name: 'T', N: 0, Vy: 0, Vz: 0, Mx: 0, My: 0, Mz: 0 }]; s.cur = 0; s.load = s.loads[0]; Object.assign(s.web, { n1: 2, p1: 60, n2: 3, p2: 60 }); return s; };
   // résistances unitaires
   let es = e0(); es.load.Vz = 100; let er = SC.compute(es);
   check('F_v,Rd M20 8.8, filetage dans le plan = 0,6·800·245/1,25 [kN]', er.bolt.FvPlane / 1e3, 0.6 * 800 * 245 / 1.25 / 1e3);
@@ -169,6 +169,24 @@
   // simple recouvrement : un plan de cisaillement
   es = e0(); es.load.My = 100; es.top.double = false; er = SC.compute(es);
   check('Semelle à plat simple : F_v,Rd du groupe = 1 plan', er.groups.top.Fv / er.bolt.FvPlane, 1);
+  // convention : M_y > 0 et V_z > 0 (cas d'une poutre isostatique près de l'appui gauche) → le côté droit voit M_w + V·e ;
+  // le côté gauche M_w − V·e : le plus défavorable est retenu, quel que soit le signe de V
+  es = e0(); es.load.Vz = 100; es.load.My = 50; er = SC.compute(es);
+  const Mw = 50e6 * er.dist.eta, Mtot = Mw + 100e3 * 80;
+  check('Âme, M_y = 50 + V_z = 100 : f_max = √((M·60/Ip)² + (V/6 + M·30/Ip)²) avec M = M_w + V·e', er.groups.web.tot[er.groups.web.imax].f / 1e3, Math.hypot(Mtot * 60 / Ip, 100e3 / 6 + Mtot * 30 / Ip) / 1e3);
+  es.load.Vz = -100; const er2 = SC.compute(es);
+  check('… même résultat avec V_z = −100 (côté gauche déterminant)', er2.groups.web.tot[er2.groups.web.imax].f / 1e3, Math.hypot(Mtot * 60 / Ip, 100e3 / 6 + Mtot * 30 / Ip) / 1e3);
+  // diamètre de boulon propre à l'âme
+  es = e0(); es.load.Vz = 100; es.bolt.dw = 16; er = SC.compute(es);
+  check('Boulons d\'âme M16 : F_v,Rd = 0,6·800·157/1,25 [kN/plan]', er.boltW.FvPlane / 1e3, 0.6 * 800 * 157 / 1.25 / 1e3);
+  // raideur : semelle M20 8.8 non précontraints, 6 boulons par côté, 2 plans ; S_j = E·z²/(2/k_semelle)
+  es = e0(); es.load.My = 100; er = SC.compute(es);
+  const k11 = 16 * 400 * 800 / (210000 * 16) * 2;
+  const kb_ = (eb) => Math.min(0.25 * eb / 20 + 0.5, 0.25 * 70 / 20 + 0.375, 1.25), kt_ = (t) => Math.min(1.5 * t / 16, 2.5);
+  const k12 = (t, eb, f) => 24 * kb_(eb) * kt_(t) * 20 * f / 210000;
+  const kBolt = 1 / (1 / k11 + 1 / k12(14, 45, 490) + 1 / (2 * k12(10, 40, 490)));
+  const kfl = 1 / (2 / (6 * kBolt) + 100 / (300 * 10 + 2 * 110 * 10));
+  check('S_j,ini = E·z²/(1/k_sup + 1/k_inf), tableau 6.11 [MN·m/rad]', er.rig.Sj / 1e9, 210000 * 276 * 276 / (2 / kfl) / 1e9);
 
   const lib = []; let nLib = 0, nBad = 0;
   const props = [['A', 6], ['Iy', 7], ['Wely', 8], ['Wply', 9], ['Avz', 10], ['Iz', 11], ['Welz', 12], ['Wplz', 13], ['It', 14]];
