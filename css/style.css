@@ -332,3 +332,18 @@ ol.audit li { margin-bottom: 8px; }
 ol.audit li b.sev { display: inline-block; font-size: 10.5px; padding: 0 6px; margin-right: 6px; background: var(--c-red); }
 ol.audit li b.sev.m { background: var(--c-sun); }
 ol.audit li b.sev.l { background: var(--paper-2); }
+/* Éclisse : grilles de figures et saisie du torseur */
+.fig-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.fig-grid .wide { grid-column: 1 / -1; }
+.fig { border: 1px solid var(--line); padding: 4px; min-width: 0; }
+.tq-grid { display: grid; grid-template-columns: minmax(190px, .75fr) minmax(0, 1.6fr) minmax(210px, .85fr); gap: 20px; align-items: start; }
+@media (max-width: 1100px) {
+  .tq-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .tq-grid > :nth-child(2) { grid-column: 1 / -1; order: -1; }
+}
+@media (max-width: 880px) { .fig-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 680px) { .tq-grid { grid-template-columns: minmax(0, 1fr); } }
+.rate-legend { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 4px 18px; font-size: 12.5px; margin-top: 8px; }
+.rate-legend div { display: flex; gap: 8px; align-items: center; border-bottom: 1px solid var(--line); padding: 3px 0; }
+.rate-legend i { width: 14px; height: 14px; flex: none; border: 1px solid var(--ink); }
+.rate-legend b { margin-left: auto; font-variant-numeric: tabular-nums; }

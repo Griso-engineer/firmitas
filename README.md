@@ -24,7 +24,9 @@ prédimensionnement d'une travée) ; les anomalies relevées et corrigées sont 
   (plat extérieur + 2 plats intérieurs), et plats d'âme ; boulons ordinaires (cat. A) ou précontraints
   (cat. B ou C) ; torseur ELU complet N, V_y, V_z, M_x, M_y, M_z ; schémas de répartition entre les plats et
   d'efforts par boulon (par composante ou résultante) ; NF EN 1993-1-8 (cisaillement, glissement, pression
-  diamétrale par pli, joints longs, rupture en bloc) et vérification des plats.
+  diamétrale par pli, joints longs, rupture en bloc, fourrures β_p) et vérification des plats ; torseurs multiples
+  avec enveloppe ; vues cotées (élévation, plans, coupe) et 3D ; vue 3D du torseur avec exemple de convention ;
+  carte des taux par pièce ; raideur S_j,ini (méthode des composantes) et classification, M_j,Rd.
 - **Fiche NDC** (PDF, Word) et **projets** (localStorage, export / import .json).
 
 ## Lancer en local
@@ -50,4 +52,5 @@ powershell -ExecutionPolicy Bypass -File serve.ps1
 | `js/app.js` | Interface |
 | `js/eclisse-calc.js` | Moteur de l'éclisse (`FirmitasSpliceCalc.compute`) |
 | `js/eclisse.js` | Interface, schémas et fiche NDC de l'éclisse |
+| `js/eclisse-draw.js` | Vues cotées, 3D axonométrique, torseur 3D, carte des taux |
 | `js/xl-ref.js` | Valeurs tabulées du classeur, pour `tests.html` uniquement |
