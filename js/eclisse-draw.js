@@ -12,7 +12,7 @@
   let uid = 0;
   const T = (x, y, s, o = {}) => `<text x="${(+x).toFixed(1)}" y="${(+y).toFixed(1)}" ${F} font-size="${o.fs || 10}" font-weight="${o.fw || 600}" fill="${o.col || INK}"${o.a ? ` text-anchor="${o.a}"` : ''}${o.rot ? ` transform="rotate(${o.rot} ${(+x).toFixed(1)} ${(+y).toFixed(1)})"` : ''}>${s}</text>`;
   const sb = (s) => String(s).replace(/_([A-Za-z0-9,]+)/g, '<tspan baseline-shift="sub" font-size="75%">$1</tspan>');
-  const svgWrap = (W, H, body, defs = '') => `<svg class="diag" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg"><defs>${defs}</defs>${body}</svg>`;
+  const svgWrap = (W, H, body, defs = '') => `<svg class="diag" style="max-width:${Math.round(W * 1.1)}px;margin:0 auto" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg"><defs>${defs}</defs>${body}</svg>`;
 
   // ---------- cotation ----------
   // cote entre deux points écran (horizontale ou verticale), décalée de off pixels
@@ -36,6 +36,24 @@
       <line x1="${xx - t}" y1="${y1 + t}" x2="${xx + t}" y2="${y1 - t}"/><line x1="${xx - t}" y1="${y2 + t}" x2="${xx + t}" y2="${y2 - t}"/></g>
       ${T(xx + (o.left ? -4 : 4), (y1 + y2) / 2 + 3, sb(label), { a: o.left ? 'end' : 'start', fs: o.fs || 9, col: DIM })}`;
   }
+  // Chaîne de cotes horizontale : une ligne de cote, libellés au-dessus s'ils tiennent dans leur intervalle,
+  // sinon empilés en dessous avec un trait de rappel. Renvoie le SVG et l'ordonnée libre sous la chaîne.
+  function chainH(xs, labels, y, ext, fs = 8.5) {
+    const tw = (s) => String(s).replace(/_/g, '').length * fs * 0.56;
+    let s = `<g stroke="${DIM}" stroke-width=".7" fill="none">`;
+    xs.forEach((x) => { s += `<line x1="${x}" y1="${ext}" x2="${x}" y2="${y + 3}"/><line x1="${x - 3}" y1="${y + 3}" x2="${x + 3}" y2="${y - 3}"/>`; });
+    s += `<line x1="${xs[0]}" y1="${y}" x2="${xs[xs.length - 1]}" y2="${y}"/></g>`;
+    const last = {}; let maxL = 0;
+    labels.forEach((lb, i) => {
+      const c = (xs[i] + xs[i + 1]) / 2, w = tw(lb), seg = xs[i + 1] - xs[i];
+      if (w + 4 <= seg && c - w / 2 >= (last[0] == null ? -1e9 : last[0] + 3)) { s += T(c, y - 3, sb(lb), { a: 'middle', fs, col: DIM }); last[0] = c + w / 2; return; }
+      let L = 1; while (last[L] != null && c - w / 2 < last[L] + 4) L++;
+      const yl = y + 5 + L * 14;
+      s += `<line x1="${c}" y1="${y}" x2="${c}" y2="${yl - 8}" stroke="${DIM}" stroke-width=".5"/>` + T(c, yl, sb(lb), { a: 'middle', fs, col: DIM });
+      last[L] = c + w / 2; maxL = Math.max(maxL, L);
+    });
+    return { s, bottom: y + 9 + maxL * 14 };
+  }
   const rect = (x, y, w, h, st) => `<rect x="${Math.min(x, x + w).toFixed(1)}" y="${Math.min(y, y + h).toFixed(1)}" width="${Math.abs(w).toFixed(1)}" height="${Math.abs(h).toFixed(1)}" ${st}/>`;
   const stBeam = `fill="${BEAM}" stroke="${INK}" stroke-width=".8"`, stPl = `fill="${ACC}" fill-opacity=".55" stroke="${INK}" stroke-width="1"`;
   const stDash = `fill="none" stroke="${INK}" stroke-width=".8" stroke-dasharray="5 3"`;
@@ -57,8 +75,8 @@
     const S = R.S, G = R.groups[gid], fl = R.geo.fl, P = G.plate, g = R.g;
     const { Lf } = lens(R);
     const ext = Lf + 60;
-    const k = Math.min((W - 120) / (2 * ext), (H - 110) / Math.max(S.b, P.bo));
-    const cx = W / 2 - 10, cy = 52 + Math.max(S.b, P.bo) * k / 2;
+    const k = Math.min((W - 200) / (2 * ext), (H - 110) / Math.max(S.b, P.bo));
+    const cx = 40 + (W - 200) / 2, cy = 52 + Math.max(S.b, P.bo) * k / 2;
     const X = (x) => cx + x * k, Y = (y) => cy - y * k;
     let s = '';
     s += rect(X(-ext), Y(S.b / 2), (ext - g / 2) * k, S.b * k, stBeam) + rect(X(g / 2), Y(S.b / 2), (ext - g / 2) * k, S.b * k, stBeam);
@@ -72,9 +90,11 @@
     const yb = Y(-Math.max(S.b, P.bo) / 2) + 16;
     let xs = [g / 2, g / 2 + fl.e1b]; for (let j = 1; j < fl.n1; j++) xs.push(g / 2 + fl.e1b + j * fl.p1); xs.push(Lf);
     const lbl = ['e_1,b'].concat(Array(fl.n1 - 1).fill('p_1')).concat(['e_1']);
-    for (let i = 0; i < xs.length - 1; i++) s += dimH(X(xs[i]), X(xs[i + 1]), yb, `${lbl[i]} = ${fmt(xs[i + 1] - xs[i], 1)}`, { ext: Y(-P.bo / 2), fs: 8.5, off: (i % 2) * 11 });
-    s += T(X(0), Y(Math.max(S.b, P.bo) / 2) - 4, `g = ${fmt(g, 1)}`, { a: 'middle', fs: 8.5, col: DIM });
-    s += dimH(X(-Lf), X(Lf), yb + 34, `L_plat = ${fmt(2 * Lf, 0)}`, { ext: Y(-P.bo / 2) });
+    const ch = chainH(xs.map(X), lbl.map((l, i) => `${l} = ${fmt(xs[i + 1] - xs[i], 1)}`), yb, Y(-P.bo / 2));
+    s += ch.s;
+    s += T(X(0) + 4, Y(Math.max(S.b, P.bo) / 2) - 4, `g = ${fmt(g, 1)}`, { fs: 8.5, col: DIM });
+    s += dimH(X(-Lf), X(Lf), ch.bottom + 18, `L_plat = ${fmt(2 * Lf, 0)}`, { ext: Y(-P.bo / 2) });
+    const Hb = Math.max(H, ch.bottom + 40);
     // cotes transversales (à droite)
     const xr = X(Lf) + 18;
     const ts = fl.ts.slice().sort((a, b) => b - a);
@@ -87,7 +107,7 @@
     const tt = gid === 'top' ? 'Plan de la semelle supérieure' : 'Plan de la semelle inférieure';
     s += T(8, 16, tt, { fw: 800, fs: 11.5 });
     s += T(8, 30, `${G.dbl ? `plat extérieur ${fmt(P.bo)} × ${fmt(P.to, 1)} + 2 plats intérieurs ${fmt(P.bi)} × ${fmt(P.ti, 1)} (tiretés)` : `plat extérieur seul ${fmt(P.bo)} × ${fmt(P.to, 1)}`} · M${G.B.d}, d_0 = ${G.B.d0}${G.pack > 0 ? ` · fourrure ${fmt(G.pack, 1)}` : ''}`.replace(/d_0/, 'd<tspan baseline-shift="sub" font-size="75%">0</tspan>'), { fw: 500, fs: 9.5, col: MUTED });
-    return svgWrap(W, H, s);
+    return svgWrap(W, Hb, s);
   }
 
   // ======================================================================
@@ -100,7 +120,7 @@
     const ext = L + 60;
     const Ht = S.h + top.to + bot.to;
     const k = Math.min((W - 130) / (2 * ext), (H - 110) / Ht);
-    const cx = W / 2 - 20, cy = 44 + (top.to + S.h / 2) * k;
+    const cx = W / 2 - 20, cy = 58 + (top.to + S.h / 2) * k;
     const X = (x) => cx + x * k, Z = (z) => cy - z * k;
     const h2 = S.h / 2;
     let s = '';
@@ -124,9 +144,11 @@
     const yb = Z(-h2 - bot.to) + 16;
     let xs = [g / 2, g / 2 + wb.e1b]; for (let j = 1; j < wb.n1; j++) xs.push(g / 2 + wb.e1b + j * wb.p1); xs.push(Lw);
     const lbl = ['e_1,b'].concat(Array(wb.n1 - 1).fill('p_1')).concat(['e_1']);
-    for (let i = 0; i < xs.length - 1; i++) s += dimH(X(xs[i]), X(xs[i + 1]), yb, `${lbl[i]} = ${fmt(xs[i + 1] - xs[i], 1)}`, { ext: Z(-wp.hp / 2), fs: 8.5, off: (i % 2) * 11 });
-    s += T(X(0), Z(-h2 - bot.to) + 12, `g = ${fmt(g, 1)}`, { a: 'middle', fs: 8.5, col: DIM });
-    s += dimH(X(-Lw), X(Lw), yb + 34, `L_plat âme = ${fmt(2 * Lw, 0)}`, { ext: Z(-wp.hp / 2) });
+    const ch = chainH(xs.map(X), lbl.map((l, i) => `${l} = ${fmt(xs[i + 1] - xs[i], 1)}`), yb, Z(-wp.hp / 2));
+    s += ch.s;
+    s += T(X(0) + 4, Z(h2 + top.to) - 14, `g = ${fmt(g, 1)}`, { fs: 8.5, col: DIM });
+    s += dimH(X(-Lw), X(Lw), ch.bottom + 18, `L_plat âme = ${fmt(2 * Lw, 0)}`, { ext: Z(-wp.hp / 2) });
+    const Hb = Math.max(H, ch.bottom + 40);
     // cotes verticales à droite
     const xr = X(ext) + 10;
     const zs = wb.ts.slice().sort((a, b) => b - a);
@@ -134,10 +156,10 @@
     for (let i = 0; i < zs.length - 1; i++) s += dimV(Z(zs[i]), Z(zs[i + 1]), xr, `p_2 = ${fmt(wb.p2, 0)}`, { ext: X(Lw) });
     s += dimV(Z(wp.hp / 2), Z(-wp.hp / 2), xr + 62, `h_p = ${fmt(wp.hp, 0)}`, { ext: X(Lw) });
     s += dimV(Z(h2), Z(-h2), X(-ext) - 12, `h = ${fmt(S.h, 1)}`, { ext: X(-ext), left: true });
-    s += T(X(-Lf), Z(h2 + top.to) - 4, `t_o = ${fmt(top.to, 1)}`.replace('t_o', 't<tspan baseline-shift="sub" font-size="75%">o</tspan>'), { fs: 8.5, col: DIM });
+    s += T(X(-Lf) - 4, Z(h2 + top.to) + 2, `t_o = ${fmt(top.to, 1)}`.replace('t_o', 't<tspan baseline-shift="sub" font-size="75%">o</tspan>'), { a: 'end', fs: 8.5, col: DIM });
     s += T(8, 16, 'Élévation', { fw: 800, fs: 11.5 });
     s += T(8, 30, `plats d'âme 2 × ${fmt(wp.hp)} × ${fmt(wp.tp, 1)} · M${R.boltW.d} · ${wb.n1} file(s) × ${wb.n2} rangée(s) par côté · trait mixte : axe du joint`, { fw: 500, fs: 9.5, col: MUTED });
-    return svgWrap(W, H, s);
+    return svgWrap(W, Hb, s);
   }
 
   // ======================================================================
@@ -249,13 +271,14 @@
       F6.forEach((fc) => {
         if (fc.end && !b[fc.end]) return;                    // face interne entre deux tranches
         const pts = fc.c.map((q) => P(q[0], q[1], q[2]));
-        const d = pts.reduce((a, q) => a + q.d / 4, 0);
+        const d = pts.reduce((a, q) => a + q.d / 4, 0), dmax = Math.max(...pts.map((q) => q.d));
         if (d >= cen.d - 1e-6) return;                       // face tournée vers l'arrière
         const col = shade(b.col, fc.f);
-        faces.push({ pts, d, col, op: b.op, seam: !fc.end && !(b.first && b.last) });
+        faces.push({ pts, d, dmax, col, op: b.op, seam: !fc.end && !(b.first && b.last) });
       });
     });
-    faces.sort((a, b) => b.d - a.d);
+    // tri sur le point le plus éloigné de chaque face (les grandes faces passent avant les petites pièces posées dessus)
+    faces.sort((a, b) => b.dmax - a.dmax || b.d - a.d);
     return faces;
   }
   const poly = (f, S2) => `<polygon points="${f.pts.map((q) => { const p = S2(q); return p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' ')}" fill="${f.col}"${f.op ? ` fill-opacity="${f.op}"` : ''} stroke="${f.seam ? f.col : INK}" stroke-width="${f.seam ? 0.8 : 0.45}"${f.op ? ` stroke-opacity="${f.op}"` : ''} stroke-linejoin="round"/>`;
