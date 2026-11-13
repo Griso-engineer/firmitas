@@ -418,6 +418,6 @@
   const api = { init, render, bind, page, load, flush, get state() { return st; }, get dirty() { return dirty; }, summary: C.summary };
   window.FirmitasFin = api;
   window.FirmitasModules = window.FirmitasModules || {};
-  window.FirmitasModules.platsoude = { kind: 'platsoude', route: 'platsoude', title: 'Attache par plat soudé', short: 'plat soudé', ref: 'NF EN 1993-1-8 + AN', api, upgrade: C.upgrade };
+  window.FirmitasModules.platsoude = { kind: 'platsoude', route: 'platsoude', title: 'Plat & boulonnage', short: 'plat & boulonnage', ref: 'NF EN 1993-1-8 + AN', api, upgrade: C.upgrade };
   window.FirmitasFinDraw = { elevation, section, plan, iso, forcesPanel };
 })();

@@ -33,7 +33,7 @@
     ['IPE O 600', 610, 224, 15, 24, 24, 154],
     ['IPE 750 × 147', 753, 265, 13.2, 17, 17, 147], ['IPE 750 × 173', 762, 267, 14.4, 21.6, 17, 173], ['IPE 750 × 220', 779, 266, 16.5, 30, 17, 220]
   ];
-  // Dimensions corrigées par rapport au classeur (voir onglet Méthode)
+  // Dimensions corrigées par rapport au classeur (voir README)
   const FIXED = {
     'IPE 750 × 137': [753, 263, 11.5, 17, 17, 137],
     'IPE 750 × 196': [770, 268, 15.6, 25.4, 17, 196]

@@ -17,13 +17,15 @@
 <div id="out"></div>
 <script src="js/sections.js?v=795732d2"></script>
 <script src="js/geom.js?v=63bb6171"></script>
-<script src="js/data.js?v=5bce53b6"></script>
+<script src="js/data.js?v=1c23bd14"></script>
 <script src="js/ec3.js?v=7de645d2"></script>
 <script src="js/store.js?v=98792fe1"></script>
 <script src="js/xl-ref.js?v=436b5782"></script>
 <script src="js/eclisse-calc.js?v=d8924dcd"></script>
-<script src="js/platsoude-calc.js?v=e6bd78d6"></script>
+<script src="js/platsoude-calc.js?v=486cfa16"></script>
 <script src="js/platines-calc.js?v=0f796c14"></script>
+<script src="js/soudure-calc.js?v=8961c627"></script>
+<script src="js/boulons-calc.js?v=60d8f97b"></script>
 <script>
 (function () {
   const E = FirmitasEC3, ST = FirmitasStore, D = FIRMITAS_DATA, G = FirmitasGeom, X = FIRMITAS_XLREF;
@@ -293,6 +295,71 @@
     const re = SC.compute(e, 0);
     check('Structville, éclisse UB 533 × 210 × 101 : part d’inertie de l’âme (9 737 / 61 500)', re.dist.eta, 0.158, 0.01);
     check('… effort de semelle dû à M_y = 610·(1 − η)/(h − t_f) [kN]', 610e3 * (1 - re.dist.eta) / re.dist.hf, 989, 0.01);
+  }
+
+  // ------------------------------------------------------------------
+  // H. Soudures — classeur « Weld verification - LG » et calculs manuels
+  // ------------------------------------------------------------------
+  title('H · Soudures — classeur « Weld verification - LG » (cellules entre parenthèses) et calculs manuels');
+  {
+    const WC = FirmitasWeldCalc, SQ3 = Math.sqrt(3);
+    const ws = (o) => Object.assign(WC.defaultState(), o);
+    const ck = (R, id) => R.checks.find((c) => c.id === id);
+    check('F_w,Rd = f_u·a/(√3·β_w·γ_M2), f_u = 490 du classeur [N/mm] (D12)', WC.fwRd(490, 4, 0.9, 1.25), 1005.8724689881481);
+    check('Taux 180 N/mm avec f_u = 490 (D21)', 180 / WC.fwRd(490, 4, 0.9, 1.25), 0.17894912680239675);
+    const r0 = WC.compute(ws({}), 0);
+    check('S355 t = 10 mm : f_u = 470 MPa (NF EN 10025-2) au lieu de 490', r0.mat.w.fu, 470);
+    check('Simplifiée, F_N = 180 N/mm : taux = 180/(470·4/(√3·0,9·1,25))', ck(r0, 'fw').r, 180 / (470 * 4 / (SQ3 * 0.9 * 1.25)));
+    const rd = WC.compute(ws({ mode: 'dir' }), 0);
+    check('Directionnelle, F_N seul : σ⊥ = τ⊥ = F/(√2·a) [MPa]', rd.dir.welds[0].sn, 180 / (Math.SQRT2 * 4));
+    check('… σ_eq = 2·σ⊥, taux = σ_eq/(f_u/(β_w·γ_M2))', ck(rd, 'eq').r, 2 * 180 / (Math.SQRT2 * 4) / (470 / (0.9 * 1.25)));
+    check('… gain de la méthode directionnelle sur effort transversal = √(3/2)', r0.simple.r / rd.dir.r, Math.sqrt(1.5));
+    const rl = WC.compute(ws({ mode: 'dir', loads: [{ name: 'L', FL: 100, FN: 0, FT: 0 }] }), 0);
+    check('Effort longitudinal seul : les deux méthodes coïncident', rl.dir.r, rl.simple.r);
+    const r2 = WC.compute(ws({ mode: 'dir', nw: 2, loads: [{ name: 'T', FL: 0, FN: 0, FT: 100 }] }), 0);
+    check('2 cordons, F_T = 100 : cordon 1 σ⊥ = −50/(√2·a), σ_eq = 2·50/(√2·a) [MPa]', r2.dir.welds[0].eq, 2 * 50 / (Math.SQRT2 * 4));
+    check('… cordon 2 : τ⊥ = −50/(√2·a) [MPa]', r2.dir.welds[1].tn, -50 / (Math.SQRT2 * 4));
+    check('Gorge a = 2,5 mm < 3 mm : bloquant, taux 3/2,5', ck(WC.compute(ws({ a: 2.5 }), 0), 'amin').r, 1.2);
+    check('L = 35 mm, a = 4 : ℓ_eff = 27 < 30 mm, taux 30/27', ck(WC.compute(ws({ L: 35 }), 0), 'lmin').r, 30 / 27);
+    check('Joint long par recouvrement L = 1 000, a = 4 : β_Lw,1 = 1,2 − 0,2·L/(150·a)', WC.compute(ws({ L: 1000, lap: true }), 0).geo.bLw, 1.2 - 0.2 * 1000 / 600);
+    check('Pièces S235 / S355 : F_w,Rd de la plus faible (f_u = 360, β_w = 0,8) [N/mm]', WC.compute(ws({ p1: { grade: 'S235', t: 10 } }), 0).geo.FwRd, 360 * 4 / (SQ3 * 0.8 * 1.25));
+  }
+
+  // ------------------------------------------------------------------
+  // I. Boulons — classeur « Bolt verification - LG » et calculs manuels
+  // ------------------------------------------------------------------
+  title('I · Boulons — classeur « Bolt verification - LG » (cellules entre parenthèses) et calculs manuels');
+  {
+    const BC = FirmitasBoltCalc;
+    const bs = (o) => Object.assign(BC.defaultState(), o);
+    const ck = (R, id) => R.checks.find((c) => c.id === id);
+    const r = BC.compute(bs({}), 0);
+    check('M16 8.8 filetage : F_v,Rd [kN] (D21)', r.res.FvRd / 1e3, 60.287999999999997);
+    check('F_t,Rd [kN] (D28)', r.res.FtRd / 1e3, 90.432000000000002);
+    check('W_el du boulon [mm³] (D34)', r.res.Wel, 277.46905237042301);
+    check('M_b,Rd élastique [kN·m] (D36)', r.res.MbRd / 1e6, 0.17758019351707072);
+    check('Taux cisaillement (D43)', ck(r, 'fv').r, 0.1326963906581741);
+    check('Taux traction (D44)', ck(r, 'ft').r, 0.40914720452937015);
+    check('Taux cisaillement + traction (D45)', ck(r, 'vt').r, 0.42494439389343852);
+    check('F_b,Rd boulon de rive, k_1 = 2,5 [kN] (D69)', r.bear.FbRd / 1e3, 24.888888888888886);
+    check('Taux pression diamétrale (D75)', ck(r, 'fb').r, 1.0044642857142858);
+    check('Pince e_1 = 20 < 1,2·d_0 = 21,6 mm : bloquant (non contrôlé par le classeur)', ck(r, 'e1').r, 21.6 / 20);
+    check('Poinçonnement B_p,Rd = 0,6·π·d_m·t·f_u/γ_M2, d_m = 1,077·s [kN]', r.res.BpRd / 1e3, 0.6 * Math.PI * (24 * (1 + 2 / Math.sqrt(3)) / 2) * 7 * 300 / 1.25 / 1e3);
+    const re = BC.compute(bs({ pos2: 'edge', p2: '' }), 0);
+    check('Boulon de rive en e_2 = 22,3 : k_1 = 2,8·e_2/d_0 − 1,7 (le classeur garde 2,5)', re.bear.k1, 2.8 * 22.3 / 18 - 1.7);
+    check('… F_b,Rd réduit [kN]', re.bear.FbRd / 1e3, (2.8 * 22.3 / 18 - 1.7) * (20 / 54) * 300 * 16 * 7 / 1.25 / 1e3);
+    check('10.9 fût lisse : α_v = 0,6, F_v,Rd = 0,6·f_ub·A/γ_M2 [kN]', BC.compute(bs({ cls: '10.9', threads: false }), 0).res.FvRd / 1e3, 0.6 * 1000 * Math.PI * 64 / 1.25 / 1e3);
+    check('M_b,Rd plastique = d_s³/6·f_yb/γ_M2 [kN·m]', BC.compute(bs({ bend: 'pl' }), 0).res.MbRd / 1e6, (4 * 157 / Math.PI) ** 1.5 / 6 * 640 / 1.25 / 1e6);
+    check('d_0 d’un M14 = 15 mm (EN 1090-2 ; le classeur donne 16)', BC.compute(bs({ d: 14 }), 0).bear.d0, 15);
+    check('d_2 du M16 = d − 0,6495·P [mm] (DATA I32)', BC.geomOf(16).d2, 14.701000000000001);
+    check('d_3 du M16 = d − 1,2269·P [mm] (DATA J32)', BC.geomOf(16).d3, 13.545999999999999);
+    check('Couple, formule du classeur F = 35 kN, µ = 0,18 / 0,20 [N·m] (D93)', r.tq.MAxl / 1e3, 135.80000000000001);
+    check('Couple VDI 2230 : F·(0,16·P + 0,58·µ_G·d_2 + µ_K·(s + d_h)/4) [N·m]', r.tq.MA / 1e3, 35 * (0.16 * 2 + 0.58 * 0.18 * (16 - 0.649519 * 2) + 0.2 * (24 + 18) / 4));
+    const tp = BC.tapped(BC.geomOf(6), 500, 500, 60);
+    check('Taraudage M6 A4-50 dans R_m = 500 : m_min [mm] (feuille Tapped D24)', tp.mmin, 4.1426956254123439, 2e-4);
+    check('… τ_B sous 7,7 kN [MPa] (D25)', 7700 / (tp.At * tp.ab), 221.17398371940891);
+    const rt = BC.compute(bs({ d: 6, cls: 'A4-50', tap: { on: true, fu: 500, ang: 60, m: '' }, tq: { on: false }, loads: [{ name: 'T', Fv: 0, Ft: 7.7, Mb: 0, Fb: 0 }] }), 0);
+    check('… taux avec γ_M2 = 1,25 (le classeur, sans γ_M2 : 0,766)', ck(rt, 'tb').r, 0.76616915422885579 * 1.25, 2e-4);
   }
 
   const lib = []; let nLib = 0, nBad = 0;

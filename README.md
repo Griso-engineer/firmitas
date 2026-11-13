@@ -9,7 +9,7 @@ NF EN 1993-1-1 avec annexe nationale française : classification, résistance de
 flambement, déversement, flexion composée (annexe B), flèches et fréquence propre.
 
 Reprise et contre-vérification du classeur « Predim_poutre acier_v3.xlsm » (même principe :
-prédimensionnement d'une travée) ; les anomalies relevées et corrigées sont listées dans l'onglet *Méthode*.
+prédimensionnement d’une travée) ; les anomalies relevées et corrigées sont recoupées dans `tests.html`.
 
 ## Fonctions
 
@@ -27,12 +27,19 @@ prédimensionnement d'une travée) ; les anomalies relevées et corrigées sont 
   diamétrale par pli, joints longs, rupture en bloc, fourrures β_p) et vérification des plats ; torseurs multiples
   avec enveloppe ; vues cotées (élévation, plans, coupe) et 3D ; vue 3D du torseur avec exemple de convention ;
   carte des taux par pièce ; raideur S_j,ini (méthode des composantes) et classification, M_j,Rd.
-- **Plat soudé** (onglet *Plat soudé*) : extrémité de poutre en I boulonnée sur un plat soudé à la poutre support
+- **Plat & boulonnage** (onglet *Plat & boulonnage*) : extrémité de poutre en I boulonnée sur un plat soudé à la poutre support
   (support et soudure hors vérification) ; boulons sous V excentré et N, pression diamétrale plat et âme, cisaillement
   brut et net, rupture en bloc, flexion du plat, traction ; recommandations de ductilité du guide SCI P358.
-- **Platines d'about** (onglet *Platines*) : profils I/H (méthode des composantes § 6.2 : tronçons en T, âme tendue,
+- **Platines d’about** (onglet *Platines d’about*) : profils I/H (méthode des composantes § 6.2 : tronçons en T, âme tendue,
   semelle comprimée, M_j,Rd, interaction N–M) et tubes RHS/SHS/CHS (tractions élastiques par boulon, tronçon en T et
   paroi) ; cisaillement + traction, poinçonnement, soudures (méthode simplifiée).
+- **Soudures** (onglet *Soudures*) : cordons d’angle, NF EN 1993-1-8 § 4.5 ; bouton pour choisir la méthode simplifiée
+  (4.5.3.3 : résultante des efforts linéiques, direction indifférente) ou directionnelle (4.5.3.2 : σ⊥, τ⊥, τ∥ dans la gorge
+  à partir d’fforts F_L, F_N, F_T orientés) ; 1 ou 2 cordons, pièce la plus faible, gorge ≥ 3 mm, ℓ_eff, joint long (4.11).
+  Reprise du classeur « Weld verification - LG » (section H de tests.html).
+- **Boulons** (onglet *Boulons*) : un boulon sous F_v, F_t et flexion M_b (3 approches) ; pression diamétrale avec k_1 et α_b
+  selon la position (rive / intérieur dans les deux directions), poinçonnement, pinces et entraxes ; longueur en prise dans un
+  taraudage (Dose & Pittner, avec γ_M2) ; couple de serrage (VDI 2230). Reprise du classeur « Bolt verification - LG » (section I).
 - **Hypothèses communes aux assemblages** (révision après relecture externe) : f<sub>u</sub> minimal de la norme de
   produit selon l'épaisseur (NF EN 10025-2 : 470 MPa pour S355 jusqu'à 100 mm) ; trous normaux, surdimensionnés ou
   oblongs (d<sub>0</sub> EN 1090-2, k<sub>s</sub> et réduction 0,8 / 0,6 de la pression diamétrale) ; pinces, entraxes
@@ -73,4 +80,6 @@ powershell -ExecutionPolicy Bypass -File serve.ps1
 | `js/r3d.js` | Rendu 3D à tampon de profondeur (boîtes, prismes) |
 | `js/platsoude-calc.js`, `js/platsoude.js` | Attache par plat soudé : moteur, interface, dessins, NDC |
 | `js/platines-calc.js`, `js/platines.js` | Platines d'about : moteur, interface, dessins, NDC |
+| `js/soudure-calc.js`, `js/soudure.js` | Soudures : moteur, interface, NDC |
+| `js/boulons-calc.js`, `js/boulons.js` | Boulons : moteur, interface, NDC |
 | `js/xl-ref.js` | Valeurs tabulées du classeur, pour `tests.html` uniquement |

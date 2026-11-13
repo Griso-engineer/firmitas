@@ -309,7 +309,7 @@
       <div class="kpi${R.sls.max > 1 ? ' bad' : ''}"><b>ELS</b><span>${pct(R.sls.max)}</span><small>${sl && sl.w > 0 ? esc(sl.label) + ' = L/' + Math.round(sl.Lratio) : 'aucune flèche'}${R.freq ? ' · f = ' + fmt(R.freq.f, 1) + ' Hz' : ''}</small></div>
       <div class="kpi"><b>Classe</b><span>${R.cls}</span><small>${esc(R.S.name)} · ${R.grade} · f<sub>y</sub> = ${R.fy} MPa</small></div>
     </div>
-    <p class="note">* Vérifié pour les critères traités par Firmitas uniquement. Hors champ : assemblages, voilement de l'âme sous charge concentrée (EN 1993-1-5 § 6), raidisseurs, torsion, fatigue, feu, section nette en traction — voir l'onglet Méthode.</p>
+    <p class="note">* Vérifié pour les critères traités par Firmitas uniquement. Hors champ : assemblages, voilement de l'âme sous charge concentrée (EN 1993-1-5 § 6), raidisseurs, torsion, fatigue, feu, section nette en traction.</p>
     <div class="sub-title" style="margin-top:28px">ELU — enveloppe par critère <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:500">· ${env.n} combinaison${env.n > 1 ? 's' : ''}</span></div>
     <div class="cols2" style="grid-template-columns:minmax(0,1.2fr) minmax(0,1fr)">
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Critère</th><th>Réf. EC3</th><th>Comb.</th><th class="num">Taux</th><th></th><th></th></tr></thead><tbody>
@@ -429,47 +429,6 @@
       ${blockHead('—', 'Sections', `${nAll} profils, dont ${nAdd} ajoutés au classeur d'origine. Caractéristiques calculées depuis les dimensions (congés de raccordement inclus ; IPN : valeurs tabulées). Les tubes existent en finis à chaud (EN 10210-2) et formés à froid (EN 10219-2), sélection dans l'onglet Vérification.`)}
       <div class="chips" style="margin-bottom:16px">${chips}</div>
       <div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>Profil</th><th class="num">h</th><th class="num">b</th><th class="num">t<sub>w</sub></th><th class="num">t<sub>f</sub></th><th class="num">kg/m</th><th class="num">A cm²</th><th class="num">I<sub>y</sub> cm⁴</th><th class="num">W<sub>pl,y</sub> cm³</th><th class="num">I<sub>z</sub> cm⁴</th><th class="num">W<sub>pl,z</sub> cm³</th><th class="num">I<sub>t</sub> cm⁴</th><th class="num">I<sub>w</sub> cm⁶</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
-    </div>`;
-  }
-
-  // ======================================================================
-  //  MÉTHODE (et contre-vérification du classeur)
-  // ======================================================================
-  function renderMethode(app) {
-    app.innerHTML = `<div class="page">
-      ${blockHead('—', 'Méthode', "Ce que calcule Firmitas, et la contre-vérification du classeur « Predim_poutre acier_v3 » dont il reprend le principe.")}
-      <div class="cols2">
-        <div>
-          <div class="sub-title">Contre-vérification du classeur — anomalies relevées</div>
-          <ol class="audit">
-            <li><b class="sev">majeur</b><b>Coefficients partiels mal affectés.</b> L'effort tranchant ELU V<sub>z</sub> (AS33:AX36) multiplie la charge variable répartie par γ = I24 (= 1,0, prévu pour G<sub>y</sub>) au lieu de 1,5, et la charge permanente ponctuelle par I23 (1,5) : V<sub>z,Ed</sub> est sous-estimé dès qu'il y a des charges variables. Les sollicitations du plan faible (M<sub>z</sub>, V<sub>y</sub>) reçoivent γ = 1,0 (I24, I25) : non pondérées.</li>
-            <li><b class="sev">majeur</b><b>Flèches et fréquence propre faussées par la mauvaise inertie.</b> La fréquence (cellule F105) utilise I<sub>z</sub> (Q12) au lieu de I<sub>y</sub>, et la masse (F108) additionne les charges des deux plans ; la deuxième formule (L5) mélange I<sub>y</sub> et le seul poids propre. Pour un IPE 80 : rapport I<sub>y</sub>/I<sub>z</sub> = 9,4, soit une fréquence sous-estimée d'un facteur 3.</li>
-            <li><b class="sev">majeur</b><b>Flèches du plan faible</b> : les charges F<sub>y</sub> ne donnent aucune flèche w<sub>y</sub>, sauf pour la console où la charge ponctuelle G<sub>y</sub> (BE27) est ajoutée à la flèche du plan fort avec I<sub>y</sub>. Module pris à 205 000 MPa au lieu de 210 000.</li>
-            <li><b class="sev">majeur</b><b>Bibliothèque de tubes</b> : I<sub>z</sub> multiplié par 10 pour les 46 tubes carrés 250 à 400 (ex. 350 × 350 × 11 : I<sub>y</sub> = 28 180 cm⁴, I<sub>z</sub> = 2 818 cm⁴) ; valeurs approchées de 3 à 7 % pour les tubes épais (≥ 10 mm) ; une ligne « 200 × 120 × 6,3 » en double avec des caractéristiques d'un autre profil ; tubes ronds non calculés (#VALEUR!, la formule bute sur le point décimal) ; « HD 400 × 1086 » et « RHS10x70x5,0 » mal nommés.</li>
-            <li><b class="sev">majeur</b><b>Déversement</b> : M<sub>cr</sub> calculé avec C<sub>1</sub>, C<sub>2</sub>, k = 0,5 saisis à la main sans lien avec les appuis ni le diagramme (k = 0,5 par défaut = rotation empêchée, non sécuritaire pour une poutre courante) ; χ<sub>LT</sub> par la méthode générale mais λ̄<sub>LT,0</sub> non utilisé ; « C<sub>mLT</sub> = 1 » figé.</li>
-            <li><b class="sev">majeur</b><b>Classification</b> faite avec les maxima de |M| et N en un même point fictif ; classe 4 seulement signalée (« non vérifiable ») mais les taux restent affichés comme valides.</li>
-            <li><b class="sev m">moyen</b><b>Charges ponctuelles</b> : les torseurs sont des valeurs « conservatives » (signalé dans la feuille) — moment ponctuel de l'appuyé–encastré approché, cumul de maxima d'abscisses différentes. Firmitas calcule les sollicitations exactes en chaque section.</li>
-            <li><b class="sev m">moyen</b><b>f<sub>y</sub></b> : un seul palier à 40 mm (tableau 3.1) appliqué sur t<sub>f</sub> ; l'AN française renvoie aux normes produits (EN 10025-2 : S355 → 345 MPa dès 16 mm). Firmitas propose les deux.</li>
-            <li><b class="sev m">moyen</b><b>Combinaisons</b> : une seule (γ<sub>G</sub>·G + γ<sub>Q</sub>·Q), pas de G favorable (soulèvement), et les « coefficients dynamiques » (J22:J25) ne sont utilisés nulle part.</li>
-            <li><b class="sev m">moyen</b><b>Tubes</b> : la ligne torsion renvoie #REF!, et la contrainte de cisaillement des tubes rectangulaires est calculée avec 2·t<sub>w</sub> mais V<sub>pl,Rd</sub> avec A<sub>v</sub> = A·h/(b+h) : deux méthodes mélangées selon la classe.</li>
-            <li><b class="sev l">mineur</b><b>Données</b> : IPE 750 × 137 avec b = 265 au lieu de 263 mm et IPE 750 × 196 avec r = 20 au lieu de 17 mm (corrigés) ; profil « T60120R » mélangé aux IPE (retiré).</li>
-          </ol>
-          <p class="note">Résultats non concernés par ces points recoupés à 10<sup>-4</sup> près : N<sub>pl,Rd</sub>, V<sub>pl,Rd</sub>, M<sub>pl,Rd</sub>, classes, χ<sub>y</sub>, χ<sub>z</sub>, M<sub>cr</sub>, χ<sub>LT</sub>, moments et flèches sous charge répartie des 4 schémas (<a href="tests.html">tests.html</a>).</p>
-        </div>
-        <div>
-          <div class="sub-title">Ce que calcule Firmitas</div>
-          <p><b>Sections</b> : caractéristiques calculées depuis h, b, t<sub>w</sub>, t<sub>f</sub>, r (I laminés : congés ; I<sub>t</sub> par la formule du catalogue ArcelorMittal ; I<sub>w</sub> = I<sub>z</sub>·(h − t<sub>f</sub>)²/4) ; tubes avec rayons d'angle normalisés (EN 10210-2 : r<sub>o</sub> = 1,5t ; EN 10219-2 : 2t à 3t). Masses recoupées avec les catalogues à ± 1 %.</p>
-          <p><b>Sollicitations</b> : poutre à une travée (appuyée, appuyée–encastrée, bi-encastrée, console), charges réparties et ponctuelles dans les deux plans, poids propre, effort normal ; sollicitations exactes en 41 sections + points de charge ; flèches par double intégration (400 pas).</p>
-          <p><b>Classification</b> (tableau 5.2) sous le torseur réel de chaque section ; classe 4 en compression : A<sub>eff</sub> selon EN 1993-1-5 § 4.4 ; classe 4 en flexion : hors domaine (signalé).</p>
-          <p><b>Résistance des sections</b> : 6.2.3 à 6.2.10 — N, V (A<sub>v</sub> selon 6.2.6(3)), M avec réduction ρ (6.2.8), N + M (6.36 à 6.41 en classes 1-2, sommation des contraintes en classe 3), tubes ronds M<sub>N</sub> = M<sub>pl</sub>(1 − n<sup>1,7</sup>).</p>
-          <p><b>Instabilités</b> : flambement (6.46 à 6.49, courbes du tableau 6.2) ; déversement (6.54 à 6.57, cas général, courbes du tableau 6.4) avec M<sub>cr</sub> à 3 facteurs (C<sub>1</sub> déduit de la forme du diagramme, C<sub>2</sub> selon le chargement et z<sub>g</sub>) ; flexion composée (6.61), (6.62) avec les k<sub>ij</sub> de l'annexe B et C<sub>m</sub> du tableau B.3.</p>
-          <p><b>ELS</b> : flèches G + Q et Q seules dans les deux plans (NF EN 1993-1-1/NA tableau 1) ; fréquence propre de flexion.</p>
-          <div class="sub-title">Non couvert</div>
-          <p style="font-size:14px">Assemblages ; voilement par cisaillement des âmes élancées (h<sub>w</sub>/t<sub>w</sub> &gt; 72ε, signalé) ; résistance de l'âme aux charges transversales (EN 1993-1-5 § 6) ; torsion ; section nette ; sections de classe 4 en flexion ; profils U, cornières, T ; continuité sur plusieurs travées ; feu ; fatigue ; vibrations au-delà de la fréquence propre.</p>
-          <div class="sub-title">Bibliothèque complétée</div>
-          <p style="font-size:14px">Ajouts : IPE 550 (absent du classeur) ; IPE A 360 à 600 ; IPE O 600 ; IPE 750 × 147, 173, 220 ; tubes ronds (calculés) ; PRS et tubes sur mesure saisis par leurs dimensions. Les familles HE AA/A/B/M 100 à 1000, HL, HD, UB, UC, IPN, SHS/RHS et CHS du classeur sont reprises.</p>
-        </div>
-      </div>
     </div>`;
   }
 
@@ -700,7 +659,7 @@
     $('#topMeta').innerHTML = p ? `${esc(p.name)}<span>${p.items.length} vérification${p.items.length > 1 ? 's' : ''}</span>` : 'Vérification acier<span>NF EN 1993-1-1 + AN</span>';
     const mr = Object.values(MODS()).find((m) => m.route === r);
     if (mr) { const ps = crumbK(mr.kind).p; $('#topMeta').innerHTML = ps ? `${esc(ps.name)}<span>${esc(mr.short)}</span>` : `${esc(mr.title)}<span>${esc(mr.ref)}</span>`; }
-    const views = { verification: renderVerification, detail: renderDetail, sections: renderSections, methode: renderMethode, projets: renderProjets };
+    const views = { verification: renderVerification, detail: renderDetail, sections: renderSections, projets: renderProjets };
     if (mr) mr.api.render(app); else (views[r] || renderVerification)(app);
     if (r !== 'verification') window.scrollTo(0, 0);
   }

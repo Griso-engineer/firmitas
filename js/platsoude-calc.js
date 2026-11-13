@@ -221,7 +221,7 @@
   function summary(st) {
     try {
       const E = computeEnv(st), r = E.runs[0];
-      return { type: 'Plat soudé', sec: r.S ? `${r.S.name} · ${E.runs[0].geo.n1}×${E.runs[0].geo.n2} M${r.bolt.d} ${r.bolt.cls}` : '—', gov: E.gov ? E.gov.label.replace(/\s*\(.*$/, '') : '', max: E.valid ? E.max : null };
+      return { type: 'Plat & boulonnage', sec: r.S ? `${r.S.name} · ${E.runs[0].geo.n1}×${E.runs[0].geo.n2} M${r.bolt.d} ${r.bolt.cls}` : '—', gov: E.gov ? E.gov.label.replace(/\s*\(.*$/, '') : '', max: E.valid ? E.max : null };
     } catch (e) { return null; }
   }
 
