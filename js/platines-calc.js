@@ -57,6 +57,51 @@
     return S;
   }
 
+  // Coefficient α de la figure 6.11 (EN 1993-1-8), forme analytique des courbes (Moore & Wald, « Design of
+  // Structural Connections to Eurocode 3 — FAQ », Q&A 6.2) : λ1* = 1,25/(α − 2,75), λ2* = α·λ1*/2,
+  // λ1 = λ1* + (1 − λ1*)·((λ2* − λ2)/λ2*)^(α/√2) si λ2 < λ2*, sinon λ1 = λ1*. α ∈ [4,45 ; 8], obtenu par dichotomie.
+  function lam1Of(a, l2) { const l1s = 1.25 / (a - 2.75), l2s = a * l1s / 2; return l2 >= l2s ? l1s : l1s + (1 - l1s) * Math.pow((l2s - l2) / l2s, a / SQ2); }
+  function alphaOf(l1, l2) {
+    if (!(l1 > 0) || !(l2 >= 0)) return 4.45;
+    if (lam1Of(8, l2) >= l1) return 8;
+    if (lam1Of(4.45, l2) <= l1) return 4.45;
+    let lo = 4.45, hi = 8;
+    for (let i = 0; i < 60; i++) { const m = (lo + hi) / 2; if (lam1Of(m, l2) > l1) lo = m; else hi = m; }
+    return (lo + hi) / 2;
+  }
+
+  // Tractions des boulons d'une platine de tube (platine supposée rigide) : boulons = ressorts en traction seule,
+  // contact platine/platine sous la paroi du tube = ressorts en compression seule (raideurs relatives d'après
+  // EN 1993-1-8 tab. 6.11 : k10 boulon, k5 platine fléchie ; diffusion à 45° pour le contact).
+  // Équilibre : ΣF = −N, ΣF·(−z) = M_y, ΣF·(−y) = M_z. Itération sur les ressorts actifs.
+  function tubeTension(bolts, kb, cpts, N, My, Mz) {
+    const pts = bolts.map((q) => ({ y: q.y, z: q.z, k: kb, bolt: true })).concat(cpts.map((c) => ({ y: c.y, z: c.z, k: c.k, bolt: false })));
+    let act = pts.map((q) => q.bolt), sol = null;
+    for (let it = 0; it < 100; it++) {
+      const A = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], phi = (q) => [1, q.y, q.z];
+      pts.forEach((q, i) => { if (!act[i]) return; const f = phi(q); for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) A[r][c] += q.k * f[r] * f[c]; });
+      const x = solve3(A, [-N, -Mz, -My]);
+      if (!x) { sol = null; break; }
+      const dl = pts.map((q) => x[0] + x[1] * q.y + x[2] * q.z);
+      const nxt = pts.map((q, i) => (q.bolt ? dl[i] > 0 : dl[i] < 0));
+      sol = { x, dl };
+      if (nxt.every((v, i) => v === act[i])) break;
+      act = nxt;
+    }
+    if (!sol) return bolts.map(() => 0);
+    return bolts.map((q, i) => Math.max(0, kb * sol.dl[i]));
+  }
+  function solve3(A, b) {
+    const M = A.map((r, i) => r.concat([b[i]]));
+    for (let c = 0; c < 3; c++) {
+      let p = c; for (let r = c + 1; r < 3; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+      if (Math.abs(M[p][c]) < 1e-12 * (Math.abs(M[0][0]) + 1)) return null;
+      [M[c], M[p]] = [M[p], M[c]];
+      for (let r = 0; r < 3; r++) if (r !== c) { const f = M[r][c] / M[c][c]; for (let k = c; k < 4; k++) M[r][k] -= f * M[c][k]; }
+    }
+    return [M[0][3] / M[0][0], M[1][3] / M[1][1], M[2][3] / M[2][2]];
+  }
+
   // tronçon en T équivalent (EN 1993-1-8 § 6.2.4, tableau 6.2, méthode 1, avec effet de levier)
   function tstub(leff1, leff2, m, n, tf, fy, gM0, sumFtRd) {
     const Mpl1 = 0.25 * leff1 * tf * tf * fy / gM0, Mpl2 = 0.25 * leff2 * tf * tf * fy / gM0;
@@ -86,8 +131,8 @@
     const bolts = [];
     if (s.shape === 'chs') {
       const n = Math.max(3, Math.round(num(L.nChs, 8))), Rb = S.d / 2 + m;
-      // largeur tributaire au pied du cordon (rayon r + a√2), et non au cercle des boulons
-      const Rt = S.d / 2 + num(s.plate.aw) * SQ2, Rw = (S.d - S.t) / 2;
+      // largeur tributaire au pied du cordon (rayon r + 0,8·a·√2, cohérent avec m), et non au cercle des boulons
+      const Rt = S.d / 2 + 0.8 * num(s.plate.aw) * SQ2, Rw = (S.d - S.t) / 2;
       for (let k = 0; k < n; k++) { const a = PI / 2 + PI / n + 2 * PI * k / n; bolts.push({ y: Rb * Math.cos(a), z: Rb * Math.sin(a), trib: 2 * PI * Rt / n, tribW: 2 * PI * Rw / n }); }
       return { bolts, m, e, Rb, Dp: 2 * (Rb + e), round: true, n };
     }
@@ -156,8 +201,10 @@
           nc = Math.min(4 * m + 1.25 * G.ex, G.e + 2 * m + 0.625 * G.ex, 0.5 * G.bp, 0.5 * G.w + 2 * m + 0.625 * G.ex);
         } else {
           m = mw; n = nI;
-          const adjT = r.type === 'adj' && r.side === tensionSide;          // rangée près de la semelle tendue : α (minimum 4,45)
-          const alpha = 4.45;
+          const adjT = r.type === 'adj' && r.side === tensionSide;          // rangée près de la semelle tendue : α (fig. 6.11)
+          const m2 = G.mi - 0.8 * af * SQ2;                                  // boulon → pied du cordon de semelle
+          const alpha = alphaOf(m / (m + G.e), Math.max(0, m2) / (m + G.e));
+          if (adjT) Object.assign(r, { alpha, lam1: m / (m + G.e), lam2: Math.max(0, m2) / (m + G.e), m2 });
           cp = 2 * PI * m; nc = adjT ? alpha * m : 4 * m + 1.25 * G.e;
           // effet de groupe : rangées intérieures voisines du même côté
           const same = G.rows.filter((q) => q.type !== 'ext' && q.side === r.side);
@@ -250,23 +297,6 @@
       const nT = Math.min(G.e, 1.25 * mEff);
       const n = G.bolts.length;
       const Iz = G.bolts.reduce((a, q) => a + q.z * q.z, 0), Iy = G.bolts.reduce((a, q) => a + q.y * q.y, 0);
-      // tractions élastiques (boulons rapportés au centre du groupe ; N > 0 compression)
-      // tractions : si tous les boulons restent tendus (traction dominante), répartition élastique autour du centre ;
-      // sinon la platine pivote sur la paroi comprimée du tube (bras de levier mesurés depuis cette paroi).
-      const FtEl = G.bolts.map((q) => -L.N / n + (Iz > 0 ? L.My * (-q.z) / Iz : 0) + (Iy > 0 ? L.Mz * (-q.y) / Iy : 0));
-      const Mres = Math.hypot(L.My, L.Mz);
-      let Ft = FtEl, pivot = null;
-      if (Math.min(...FtEl) < 0 && Mres > 1) {
-        const uz = -L.My / Mres, uy = -L.Mz / Mres;          // direction du côté tendu (s croissant)
-        const sp = -(S.type === 'CHS' ? S.d / 2 : S.h / 2 * Math.abs(uz) + S.b / 2 * Math.abs(uy));   // paroi comprimée
-        const hs = G.bolts.map((q) => Math.max(0, q.z * uz + q.y * uy - sp));
-        const Mt = Mres - L.N * (-sp);                          // N > 0 (compression) au centre réduit le moment de soulèvement
-        const S2 = hs.reduce((a, h) => a + h * h, 0);
-        Ft = hs.map((h) => (Mt > 0 && S2 > 0 ? Mt * h / S2 : 0));
-        pivot = { sp, Mt };
-      }
-      R.pivot = pivot;
-      R.FtBolt = Ft.map((f) => Math.max(0, f));
       const caps = G.bolts.map((q) => {
         const cp = 2 * PI * mEff, nc = 4 * mEff + 1.25 * G.e;
         const l1 = Math.min(cp, nc, q.trib), l2 = Math.min(nc, q.trib);
@@ -274,6 +304,26 @@
         const wall = (q.tribW || q.trib) * t * fym / gam.M0;                 // bande de paroi tendue
         return { l1, l2, ts, wall, F: Math.min(ts.F, wall) };
       });
+      // tractions : platine rigide, contact sous la paroi comprimée (et non rotation autour du centre du groupe,
+      // qui sous-estime la traction en flexion) ; tous boulons tendus si la traction domine
+      const Lb = 2 * tp + 8 + 0.8 * d;                                     // serrage + ½ tête + ½ écrou (approx.)
+      const k10 = 1.6 * As / Lb, l1m = caps.reduce((a, c) => a + c.l1, 0) / caps.length;
+      const k5 = 0.9 * l1m * tp * tp * tp / Math.pow(Math.max(mEff, 1), 3);
+      const kbT = 1 / (1 / k10 + 1 / k5);
+      const cpts = [], bcw0 = t + 2 * tp;                                  // largeur de contact (diffusion à 45°)
+      if (S.type === 'CHS') {
+        const rc = (S.d - t) / 2, nc = 72;
+        for (let k = 0; k < nc; k++) { const a = 2 * PI * (k + 0.5) / nc; cpts.push({ y: rc * Math.cos(a), z: rc * Math.sin(a), k: bcw0 * (2 * PI * rc / nc) / (2 * tp) }); }
+      } else {
+        const hc = S.h - t, bc2 = S.b - t, ns = 24;
+        for (let k = 0; k < ns; k++) {
+          const u = (k + 0.5) / ns - 0.5;
+          cpts.push({ y: u * bc2, z: hc / 2, k: bcw0 * bc2 / ns / (2 * tp) }, { y: u * bc2, z: -hc / 2, k: bcw0 * bc2 / ns / (2 * tp) });
+          cpts.push({ y: bc2 / 2, z: u * hc, k: bcw0 * hc / ns / (2 * tp) }, { y: -bc2 / 2, z: u * hc, k: bcw0 * hc / ns / (2 * tp) });
+        }
+      }
+      R.FtBolt = tubeTension(G.bolts, kbT, cpts, L.N, L.My, L.Mz);
+      R.kTube = { k10, k5, kb: kbT, Lb };
       R.caps = caps;
       let worstT = 0, it = 0;
       R.FtBolt.forEach((f, i) => { const r = f / caps[i].F; if (r > worstT) { worstT = r; it = i; } });
@@ -336,5 +386,5 @@
     } catch (e) { return null; }
   }
 
-  window.FirmitasEPCalc = { compute, computeEnv, defaultState, upgrade, summary, tstub, memberOf, DM };
+  window.FirmitasEPCalc = { compute, computeEnv, defaultState, upgrade, summary, tstub, memberOf, DM, alphaOf, tubeTension };
 })();

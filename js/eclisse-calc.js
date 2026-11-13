@@ -23,8 +23,14 @@
     S420: [[40, 520], [63, 500], [80, 480], [100, 470]], S460: [[40, 540], [63, 530], [80, 510], [100, 500]] };
   const fuOf = (g, t) => { const L = FU[g] || FU.S355; for (const [tm, f] of L) if (t <= tm) return f; return L[L.length - 1][1]; };
   // trous : diamètre (EN 1090-2 tableau 11) et réduction de pression diamétrale (EN 1993-1-8 tableau 3.4, notes 2 et 3)
-  const HOLES = { normal: { add: 0, kb: 1 }, oversize: { add: 'over', kb: 0.8 }, slotShortT: { add: 0, kb: 0.6 }, slotLongT: { add: 0, kb: 0.6 } };
-  const d0Hole = (d, holes) => { const h = HOLES[holes] || HOLES.normal; if (h.add !== 'over') return d0Of(d); return d + (d <= 14 ? 3 : d <= 22 ? 4 : d <= 24 ? 6 : 8); };
+  // jeu nominal (EN 1090-2 tab. 11) ; trous oblongs : longueur du trou retenue (sécuritaire pour sections nettes et pinces)
+  const HOLES = {
+    normal: { clr: (d) => (d <= 14 ? 1 : d <= 24 ? 2 : 3), kb: 1 },
+    oversize: { clr: (d) => (d <= 12 ? 3 : d <= 22 ? 4 : d <= 24 ? 6 : 8), kb: 0.8 },
+    slotShortT: { clr: (d) => (d <= 14 ? 4 : d <= 22 ? 6 : d <= 24 ? 8 : 10), kb: 0.6 },
+    slotLongT: { clr: (d) => 1.5 * d, kb: 0.6 }
+  };
+  const d0Hole = (d, holes) => d + (HOLES[holes] || HOLES.normal).clr(d);
 
   const COMPS = [
     { id: 'N', label: 'N', unit: 'kN', title: 'Effort normal' },
@@ -446,7 +452,7 @@
       const tpl = up(S.b * S.tf / (bo + (dbl ? 2 * bi : 0)));
       Object.assign(P, { double: dbl, bo, to: tpl, bi, ti: tpl });
     });
-    const Af = S.b * S.tf, n1 = Math.min(8, Math.max(2, Math.ceil(0.9 * Af * D.fyOf(s.grade, S.tf, 'en10025') / (2 * 0.6 * CLASSES[s.bolt.cls].fub * (BOLTS[d] || 245) / 1.25) / 2)));
+    const Af = S.b * S.tf, n1 = Math.min(8, Math.max(2, Math.ceil(0.9 * Af * D.fyOf(s.grade, S.tf, 'en10025') / (2 * CLASSES[s.bolt.cls].av * CLASSES[s.bolt.cls].fub * (BOLTS[d] || 245) / 1.25) / 2)));
     Object.assign(s.fl, { n1, p1: p, e1: e, e1b: e, n2s: 1, w });
     const dW = s.bolt.dw && s.bolt.dw !== 'same' ? num(s.bolt.dw, d) : d, d0w = d0Hole(dW, s.bolt.holes);
     const ew = Math.ceil(1.5 * d0w / 5) * 5, pw = Math.ceil(3 * d0w / 5) * 5;

@@ -40,8 +40,9 @@ prédimensionnement d'une travée) ; les anomalies relevées et corrigées sont 
   ou négatives refusées. Éclisse : partage des plans de cisaillement au prorata des aires des plats (plan le plus
   chargé déterminant), part d'inertie de l'âme limitée à la partie droite h − 2t<sub>f</sub> − 2r. Plat soudé :
   V<sub>pl</sub>/1,27 (SCI P358), ductilité 0,5·d (S275) / 0,42·d (S355), pinces de l'âme mesurées aux semelles.
-  Platines : soudures avec la pièce la plus faible, V<sub>y</sub> dans les cordons de semelles, tubes avec pivot
-  sur la paroi comprimée, largeur tributaire au pied du cordon pour les CHS.
+  Platines : α de la figure 6.11 calculé (forme analytique), soudures avec la pièce la plus faible, V<sub>y</sub> dans les cordons de semelles, tubes par platine rigide avec contact
+  en compression seule sous la paroi du tube, largeur tributaire au pied du cordon pour les CHS. Recoupement avec
+  SCI P358 (ex. 1), Dlubal KB 001497 et Structville (section G de tests.html).
 - Vues 3D par tampon de profondeur (`js/r3d.js`) : parties cachées exactes, boulons complets.
 - **Fiche NDC** (PDF, Word) et **projets** (localStorage, export / import .json).
 

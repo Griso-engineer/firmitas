@@ -243,14 +243,53 @@
   check('M_j,Rd = Σ h_r·F_t,r,Rd [kN·m]', er3.MjRd / 1e6, er3.Mres.bot.rows.reduce((a, q) => a + q.F * q.h, 0) / 1e6);
   eps = EPC.defaultState(); eps.shape = 'rhs'; eps.loads = [{ name: 'T', N: -800, Vy: 0, Vz: 0, Mx: 0, My: 5, Mz: 2 }]; er3 = EPC.compute(eps);
   check('SHS, traction dominante (tous boulons tendus) : F_t = 800/8 + M_y·140/Σz² + M_z·50/Σy² [kN]', Math.max(...er3.FtBolt) / 1e3, (100e3 + 5e6 * 140 / 88400 + 2e6 * 50 / 88400) / 1e3);
-  eps.loads = [{ name: 'T', N: 0, Vy: 0, Vz: 0, Mx: 0, My: 30, Mz: 0 }]; er3 = EPC.compute(eps);
-  { const m = 40, S2 = 2 * Math.pow(200 + m, 2) + 2 * 150 * 150 + 2 * 50 * 50;
-    check('SHS, M_y = 30 kN·m : pivot sur la paroi comprimée, F_t = M·(h + m)/Σh_i² [kN]', Math.max(...er3.FtBolt) / 1e3, 30e6 * (200 + m) / S2 / 1e3); }
+  eps = EPC.defaultState(); eps.shape = 'rhs'; eps.loads = [{ name: 'T', N: -200, Vy: 0, Vz: 0, Mx: 0, My: 0, Mz: 0 }]; er3 = EPC.compute(eps);
+  check('SHS, 8 boulons, traction centrée N = 200 kN : F_t = N/8 [kN]', Math.max(...er3.FtBolt) / 1e3, 25);
+  eps.Tlay.sides = 2; eps.loads = [{ name: 'M', N: 0, Vy: 0, Vz: 0, Mx: 0, My: 30, Mz: 0 }]; er3 = EPC.compute(eps);
+  {
+    // platine rigide, contact sous la paroi comprimée : la traction des boulons équilibre le moment avec la résultante de contact
+    check('SHS 200 × 10, boulons sur 2 faces (m = 40), M_y = 30 kN·m : F_t ≈ M/(2·[(h/2 + m) + (h − t)/2]) — contact sous la paroi comprimée [kN]', Math.max(...er3.FtBolt) / 1e3, 30e3 / (2 * (140 + 95)), 0.02);
+    check('… seuls les 2 boulons de la face tendue travaillent', er3.FtBolt.filter((f) => f > 1).length, 2);
+    check('… traction > modèle autour du centre du groupe M·z/Σz² = 53,6 kN (non conservatif)', Math.max(...er3.FtBolt) / 1e3 > 53.6 ? 1 : 0, 1);
+  }
+  check('Coefficient α (fig. 6.11) : λ1 = 0,455, λ2 = 0,297 → α ≈ 6,65 (exemple Dlubal KB 001497)', EPC.alphaOf(62.6 / 137.6, 40.8 / 137.6), 6.65, 0.02);
   eps = EPC.defaultState(); eps.Ilay.nInBot = 2; er3 = EPC.compute(eps);
   { const rI = er3.Mres.bot.rows.find((q) => q.type === 'inner'), S = er3.S, mw = (150 - S.tw) / 2 - 0.8 * 5 * Math.SQRT2, e = 75;
     check('Rangée intérieure d’extrémité de groupe : l_eff,nc = min(4m + 1,25e ; 2m + 0,625e + p/2) (tab. 6.6)', rI.cap.nc, Math.min(4 * mw + 1.25 * e, 2 * mw + 0.625 * e + 40)); }
   eps = EPC.defaultState(); eps.plateGrade = 'S235'; er3 = EPC.compute(eps);
   check('Soudure âme, poutre S355 / platine S235 : f_vw = min(470/0,9 ; 360/0,8)/(√3·1,25)·a [N/mm]', er3.checks.find((c) => c.id === 'ww').Rd, Math.min(470 / 0.9, 360 / 0.8) / (Math.sqrt(3) * 1.25) * 5);
+
+  // ------------------------------------------------------------------
+  // G. Références externes publiées
+  // ------------------------------------------------------------------
+  title('G · Recoupement avec des exemples publiés');
+  {
+    const fin = (sec, V, n1, n2, gm2) => { const s = FC.defaultState(); s.sec = { kind: 'cat', fam: 'UB', name: sec }; s.grade = 'S275'; s.plateGrade = 'S275'; s.gam.M2 = gm2; s.gap = 10; s.plate = { tp: 10, zTop: 50 }; s.bolts = { n1, n2, p1: 70, p2: 60, e1: 40, e2p: 50, e2b: 40 }; s.loads = [{ name: 'V', V, N: 0 }]; return FC.compute(s, 0); };
+    [['UB 406 × 178 × 74', 200, 4, 1, [288, 332, 363, 435, 347]], ['UB 533 × 210 × 92', 350, 5, 2, [577, 574, 450, 538, 494]]].forEach(([sec, V, n1, n2, ref]) => {
+      const t = 'SCI P358 ex. 1, ' + sec.replace('UB ', '') + ' : ';
+      let r = fin(sec, V, n1, n2, 1.25);
+      check(t + 'groupe de boulons V_Rd [kN]', V / byId(r, 'bolts', 'v').r, ref[0], 0.015);
+      check(t + 'pression diamétrale sur le plat V_Rd [kN]', V / byId(r, 'plate', 'b').r, ref[1], 0.015);
+      check(t + 'plat, cisaillement brut V_Rd,g [kN]', byId(r, 'plate', 'pv').Rd / 1e3, ref[2], 0.005);
+      r = fin(sec, V, n1, n2, 1.1);
+      check(t + 'plat, cisaillement net (γ_M2 = 1,1 AN UK) [kN]', byId(r, 'plate', 'pvn').Rd / 1e3, ref[3], 0.005);
+      check(t + 'plat, rupture en bloc (γ_M2 = 1,1 AN UK) [kN]', byId(r, 'plate', 'pbt').Rd / 1e3, ref[4], 0.005);
+    });
+    const s = EPC.defaultState(); s.sec = { kind: 'cat', fam: 'HE B', name: 'HE 400 B' }; s.grade = 'S235'; s.plateGrade = 'S235'; s.bolt = { d: 24, cls: '10.9', threads: true };
+    s.plate = { tp: 25, af: 9, aw: 5 }; s.Ilay = { extTop: true, extBot: false, mx: 50, ex: 35, nInTop: 1, nInBot: 0, mi: 51, p: 80, w: 150, bp: 300, over: 15 };
+    s.loads = [{ name: 'M', N: 0, Vy: 0, Vz: 0, Mx: 0, My: -100, Mz: 0 }];
+    const r = EPC.compute(s, 0), R2 = r.Mres.top.rows;
+    // Dlubal retient f_y = 235 MPa (tab. 3.1) ; Firmitas f_y = 225 MPa pour t = 25 mm (NF EN 10025-2, AN française) : écart ≈ 1,5 %
+    check('Dlubal KB 001497 (HE 400 B, M24 10.9, t_p = 25) : l_eff,nc rangée sous semelle = α·m [mm]', R2[1].cap.nc, 416.3, 0.02);
+    check('… F_t,Rd rangée débordante [kN] (f_y 225 / 235)', R2[0].F / 1e3, 385.12, 0.02);
+    check('… F_t,Rd rangée intérieure [kN]', R2[1].F / 1e3, 499.24, 0.02);
+    check('… M_j,Rd [kN·m]', r.MjRd / 1e6, 324.95, 0.02);
+    const e = SC.defaultState(); e.sec = { kind: 'cat', fam: 'UB', name: 'UB 533 × 210 × 101' }; e.grade = 'S275'; e.plateGrade = 'S275';
+    e.loads = [{ name: 'ELU', N: 55, Vy: 0, Vz: 215, Mx: 0, My: 610, Mz: 0 }]; e.cur = 0;
+    const re = SC.compute(e, 0);
+    check('Structville, éclisse UB 533 × 210 × 101 : part d’inertie de l’âme (9 737 / 61 500)', re.dist.eta, 0.158, 0.01);
+    check('… effort de semelle dû à M_y = 610·(1 − η)/(h − t_f) [kN]', 610e3 * (1 - re.dist.eta) / re.dist.hf, 989, 0.01);
+  }
 
   const lib = []; let nLib = 0, nBad = 0;
   const props = [['A', 6], ['Iy', 7], ['Wely', 8], ['Wply', 9], ['Avz', 10], ['Iz', 11], ['Welz', 12], ['Wplz', 13], ['It', 14]];

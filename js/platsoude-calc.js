@@ -13,6 +13,8 @@
   'use strict';
   const SC = window.FirmitasSpliceCalc, D = window.FIRMITAS_DATA;
   const { num, BOLTS, CLASSES, d0Of, fuOf, groupForces, bearing } = SC;
+  // Ductilité (SCI P358, détails recommandés) : t_p et t_w ≤ 0,50·d (S275) ou 0,42·d (S355)
+  const DUCT = { S235: 0.5, S275: 0.5, S355: 0.42, S420: 0.42, S460: 0.42 };
   const PI = Math.PI, BIG = 1e9;
 
   function defaultState() {
@@ -94,10 +96,14 @@
     geoC('g_bot', 'Géométrie — bas du plat au-dessus de la semelle inf. et du congé', G.zTop + G.hp, S.h - S.tf - S.r, `z_bas = ${(G.zTop + G.hp).toFixed(0)} mm ≤ h − t_f − r = ${(S.h - S.tf - S.r).toFixed(1)} mm`, 'web');
     if (G.g < 10) R.info.push('Jeu entre l\'about de poutre et la poutre support inférieur à 10 mm : vérifier la rotation de l\'attache sans contact.');
     // recommandations de ductilité et de stabilité (guide SCI P358, attaches articulées)
-    const kDu = /S(355|420|460)/.test(s.plateGrade) ? 0.42 : 0.5;
-    if (bc.fub === 800 && tp > kDu * d) R.info.push(`Ductilité : t_p = ${tp} mm > ${String(kDu).replace('.', ',')}·d = ${(kDu * d).toFixed(1)} mm — le guide SCI P358 recommande t_p ≤ 0,5·d (S275) ou 0,42·d (S355) avec des boulons 8.8 pour que le plat plastifie en pression diamétrale avant la rupture des boulons.`);
+    const kdp = DUCT[s.plateGrade] || 0.42, kdw = DUCT[s.grade] || 0.42;
+    if (tp > kdp * d + 1e-9) R.info.push(`Ductilité : t_p = ${tp} mm > ${String(kdp).replace('.', ',')}·d = ${(kdp * d).toFixed(1).replace('.', ',')} mm — le guide SCI P358 recommande t_p ≤ 0,50·d (S275) ou 0,42·d (S355), boulons 8.8 non précontraints, pour que la rotation se fasse par ovalisation des trous avant la rupture des boulons.`);
+    if (S.tw > kdw * d + 1e-9) R.info.push(`Ductilité : âme t_w = ${S.tw} mm > ${String(kdw).replace('.', ',')}·d = ${(kdw * d).toFixed(1).replace('.', ',')} mm (même recommandation SCI P358 pour l’âme de la poutre portée).`);
+    if (bc.fub !== 800) R.info.push('Le guide SCI P358 est établi pour des boulons de classe 8.8 non précontraints dans des trous normaux.');
+    if (Math.min(G.e1, G.e2p, G.e2b) < 2 * d - 1e-6) R.info.push(`Pinces : le guide SCI P358 recommande des pinces ≥ 2·d = ${2 * d} mm sur le plat et l’âme (ductilité, rotation).`);
     if (G.hp < 0.6 * S.h) R.info.push(`Hauteur du plat h_p = ${G.hp.toFixed(0)} mm < 0,6·h = ${(0.6 * S.h).toFixed(0)} mm : maintien en torsion de l'extrémité de poutre à justifier (SCI P358 recommande h_p ≥ 0,6·h).`);
     if (G.a > tp / 0.15) R.info.push(`Plat long : distance soudure – 1re file a = ${G.a.toFixed(0)} mm > t_p/0,15 = ${(tp / 0.15).toFixed(0)} mm — stabilité latérale du plat à justifier (SCI P358).`);
+    R.info.push('Hors champ : poutre entaillée (grugeage), soudure du plat (le guide SCI P358 recommande des soudures à pleine résistance) et poutre support.');
 
     // ---------- efforts dans les boulons (répartition élastique, V excentré de z) ----------
     const grp = { pts: G.pts };
