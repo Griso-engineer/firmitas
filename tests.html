@@ -156,21 +156,30 @@
   check('… semelle inférieure tendue : F_x = −M/(h − t_f) [kN]', er.dist.tot.bot.Fx / 1e3, -200e3 / 276);
   // part d'inertie de l'âme
   es.myShare = 'inertie'; er = SC.compute(es);
-  check('Part de M_y dans l\'âme = t_w·(h − 2t_f)³/12 / I_y', er.dist.eta, 8.5 * Math.pow(262, 3) / 12 / er.S.Iy);
+  check('Part de M_y dans l\'âme = t_w·(h − 2t_f − 2r)³/12 / I_y (partie droite éclissée)', er.dist.eta, 8.5 * Math.pow(290 - 28 - 54, 3) / 12 / er.S.Iy);
   // torsion : couple transversal dans les semelles
   es = e0(); es.load.Mx = 5; er = SC.compute(es);
   check('M_x = 5 kN·m : F_y semelle sup. = M_x/(h − t_f) [kN]', er.dist.tot.top.Ft / 1e3, 5e3 / 276);
   // pression diamétrale, semelle de poutre t = 14, e1 = 45, p1 = 70, e2 = 70 (b/2 − w/2), une ligne par côté (w = 160)
   es = e0(); es.load.My = 100; er = SC.compute(es);
   const ply = er.groups.top.plies[0], d0 = 22;
-  const ab = Math.min(45 / (3 * d0), 70 / (3 * d0) - 0.25, 800 / 490, 1), k1 = Math.min(2.8 * 70 / d0 - 1.7, 1.4 * 160 / d0 - 1.7, 2.5);
-  check('F_b,Rd semelle de poutre, effort longitudinal = k₁·α_b·f_u·d·t/γ_M2 [kN]', ply.bx.Fb / 1e3, k1 * ab * 490 * 20 * 14 / 1.25 / 1e3);
+  const ab = Math.min(45 / (3 * d0), 70 / (3 * d0) - 0.25, 800 / 470, 1), k1 = Math.min(2.8 * 70 / d0 - 1.7, 1.4 * 160 / d0 - 1.7, 2.5);
+  check('F_b,Rd semelle de poutre, effort longitudinal = k₁·α_b·f_u·d·t/γ_M2 [kN]', ply.bx.Fb / 1e3, k1 * ab * 470 * 20 * 14 / 1.25 / 1e3);
   // joint long : n1 = 8, p1 = 70 → Lj = 490 > 15d = 300 → β = 1 − (490 − 300)/(200·20)
   es = e0(); es.load.My = 100; es.fl.n1 = 8; er = SC.compute(es);
   check('Joint long L_j = 490 mm : β_Lf = 1 − (L_j − 15d)/(200d)', er.groups.top.bL, 1 - 190 / 4000);
   // simple recouvrement : un plan de cisaillement
   es = e0(); es.load.My = 100; es.top.double = false; er = SC.compute(es);
   check('Semelle à plat simple : F_v,Rd du groupe = 1 plan', er.groups.top.Fv / er.bolt.FvPlane, 1);
+  es = e0(); es.load.My = 100; er = SC.compute(es);
+  check('Double couvre-joint (300×10 + 2×110×10) : F_v,Rd = F_v,plan / part max = (A_o + A_i)/A_o', er.groups.top.Fv / er.bolt.FvPlane, (3000 + 2200) / 3000);
+  es.bolt.holes = 'oversize'; er = SC.compute(es);
+  check('Trous surdimensionnés M20 : d₀ = 24 mm (EN 1090-2)', er.bolt.d0, 24);
+  check('… F_b,Rd × 0,8 (tab. 3.4 note 2)', er.groups.top.plies[0].bx.kb, 0.8);
+  es = e0(); es.load.My = 100; es.fl.e1b = 20; er = SC.compute(es);
+  check('Pince e₁ = 20 mm < 1,2·d₀ : contrôle géométrique bloquant (taux > 1)', er.max > 1 ? 1 : 0, 1);
+  es = e0(); es.web.tp = 0; er = SC.compute(es);
+  check('Épaisseur nulle : données invalides', er.valid ? 1 : 0, 0);
   // convention : M_y > 0 et V_z > 0 (cas d'une poutre isostatique près de l'appui gauche) → le côté droit voit M_w + V·e ;
   // le côté gauche M_w − V·e : le plus défavorable est retenu, quel que soit le signe de V
   es = e0(); es.load.Vz = 100; es.load.My = 50; er = SC.compute(es);
@@ -186,7 +195,7 @@
   const k11 = 16 * 400 * 800 / (210000 * 16) * 2;
   const kb_ = (eb) => Math.min(0.25 * eb / 20 + 0.5, 0.25 * 70 / 20 + 0.375, 1.25), kt_ = (t) => Math.min(1.5 * t / 16, 2.5);
   const k12 = (t, eb, f) => 24 * kb_(eb) * kt_(t) * 20 * f / 210000;
-  const kBolt = 1 / (1 / k11 + 1 / k12(14, 45, 490) + 1 / (2 * k12(10, 40, 490)));
+  const kBolt = 1 / (1 / k11 + 1 / k12(14, 45, 470) + 1 / (2 * k12(10, 40, 470)));
   const kfl = 1 / (2 / (6 * kBolt) + 100 / (300 * 10 + 2 * 110 * 10));
   check('S_j,ini = E·z²/(1/k_sup + 1/k_inf), tableau 6.11 [MN·m/rad]', er.rig.Sj / 1e9, 210000 * 276 * 276 / (2 / kfl) / 1e9);
 
@@ -200,13 +209,19 @@
   const Ipf = 2 * (105 * 105 + 35 * 35), Mf = 180e3 * 50;
   check('Boulon d\'angle : √((V·z·105/Σt²)² + (V/4)²) [kN]', fr.forces[fr.imax].f / 1e3, Math.hypot(Mf * 105 / Ipf, 180e3 / 4) / 1e3);
   const byId = (r, g, id) => r.checks.find((c) => c.grp === g && c.id === id);
-  check('Plat : V_pl,Rd = h_p·t_p·f_y/√3 = 290·10·355/√3 [kN]', byId(fr, 'plate', 'pv').Rd / 1e3, 290 * 10 * 355 / Math.sqrt(3) / 1e3);
-  check('Plat : section nette (290 − 4·22)·10·490/(√3·1,25) [kN]', byId(fr, 'plate', 'pvn').Rd / 1e3, (290 - 88) * 10 * 490 / (Math.sqrt(3) * 1.25) / 1e3);
-  check('Plat : rupture en bloc 0,5·f_u·A_nt/γ_M2 + f_y·A_nv/(√3·γ_M0) [kN]', byId(fr, 'plate', 'pbt').Rd / 1e3, (0.5 * 490 * (45 - 11) * 10 / 1.25 + 355 * (40 + 210 - 3.5 * 22) * 10 / Math.sqrt(3)) / 1e3);
+  check('Plat : V_pl,Rd = h_p·t_p·f_y/(√3·1,27) = 290·10·355/(√3·1,27) (SCI P358) [kN]', byId(fr, 'plate', 'pv').Rd / 1e3, 290 * 10 * 355 / Math.sqrt(3) / 1.27 / 1e3);
+  check('Plat : section nette (290 − 4·22)·10·470/(√3·1,25) [kN]', byId(fr, 'plate', 'pvn').Rd / 1e3, (290 - 88) * 10 * 470 / (Math.sqrt(3) * 1.25) / 1e3);
+  check('Plat : rupture en bloc 0,5·f_u·A_nt/γ_M2 + f_y·A_nv/(√3·γ_M0) [kN]', byId(fr, 'plate', 'pbt').Rd / 1e3, (0.5 * 470 * (45 - 11) * 10 / 1.25 + 355 * (40 + 210 - 3.5 * 22) * 10 / Math.sqrt(3)) / 1e3);
   check('Plat : flexion à la soudure V·z/(t·h²/6·f_y)', byId(fr, 'plate', 'pm').r, Math.max(Mf / (10 * 290 * 290 / 6 * 355), 0));
   fsS.loads[0] = { name: 'T', V: 0, N: 100 }; fr = FC.compute(fsS);
   check('N = 100 kN seul : effort par boulon = N/4 [kN]', fr.forces[0].f / 1e3, 25);
-  check('Âme : traction nette 0,9·(h_w − 4·d_0)·t_w·f_u/γ_M2 [kN]', byId(fr, 'web', 'wt').Rd / 1e3, 0.9 * (360 - 2 * 12.7 - 88) * 8 * 490 / 1.25 / 1e3);
+  check('Âme : traction nette 0,9·(h_w − 4·d_0)·t_w·f_u/γ_M2 [kN]', byId(fr, 'web', 'wt').Rd / 1e3, 0.9 * (360 - 2 * 12.7 - 88) * 8 * 470 / 1.25 / 1e3);
+  fsS = fs0(); fr = FC.compute(fsS);
+  check('Âme : pince verticale = distance de la file extrême à la face intérieure de semelle = z_haut + e₁ − t_f [mm]', fr.eWeb, Math.min(35 + 40 - 12.7, 360 - 12.7 - (35 + 290 - 40)));
+  fsS.bolts.e1 = 20; fr = FC.compute(fsS);
+  check('Pince e₁ = 20 mm < 1,2·d₀ : contrôle géométrique bloquant', fr.max > 1 ? 1 : 0, 1);
+  fsS = fs0(); fsS.plate.tp = 10; fsS.plateGrade = 'S355'; fsS.bolt.d = 20; fr = FC.compute(fsS);
+  check('Ductilité S355 : t_p = 10 > 0,42·d = 8,4 mm signalé', fr.info.some((w) => /0,42·d/.test(w)) ? 1 : 0, 1);
 
   // ------------------------------------------------------------------
   // F. Platines d'about — calculs manuels
@@ -219,15 +234,23 @@
   check('… mode 2 déterminant', tsx.mode, 2);
   let eps = EPC.defaultState(), er3 = EPC.compute(eps);
   check('M22 10.9 : F_t,Rd = 0,9·1000·303/1,25 [kN]', er3.bolt.FtRd / 1e3, 0.9 * 1000 * 303 / 1.25 / 1e3);
-  check('M22, platine 25 mm : B_p,Rd = 0,6·π·d_m·t_p·f_u/γ_M2 (d_m = 34,5) [kN]', er3.bolt.BpRd / 1e3, 0.6 * Math.PI * 34.5 * 25 * 490 / 1.25 / 1e3);
+  check('M22, platine 25 mm : B_p,Rd = 0,6·π·d_m·t_p·f_u/γ_M2 (d_m = 34,5) [kN]', er3.bolt.BpRd / 1e3, 0.6 * Math.PI * 34.5 * 25 * 470 / 1.25 / 1e3);
   const extR = er3.Mres.bot.rows[0], mx_ = 45 - 0.8 * 8 * Math.SQRT2;
   check('Rangée débordante : l_eff,nc = min(4m_x + 1,25e_x ; e + 2m_x + 0,625e_x ; 0,5b_p ; …) = 150 mm', extR.cap.nc, Math.min(4 * mx_ + 50, 75 + 2 * mx_ + 25, 150, 75 + 2 * mx_ + 25));
   check('Rangée débordante : h_r = (h/2 − t_f/2) + h/2 + m_x [mm]', extR.h, 145 - 7 + 145 + 45);
   const r2_ = er3.Mres.bot.rows[1];
   check('Règle 6.2.7.2 (9) : F_t,2,Rd ≤ F_t,1,Rd·h_2/h_1 (rangée 1 > 1,9·F_t,Rd)', r2_.F / 1e3, Math.min(r2_.cap.F, extR.F * r2_.h / extR.h) / 1e3);
   check('M_j,Rd = Σ h_r·F_t,r,Rd [kN·m]', er3.MjRd / 1e6, er3.Mres.bot.rows.reduce((a, q) => a + q.F * q.h, 0) / 1e6);
-  eps = EPC.defaultState(); eps.shape = 'rhs'; eps.loads = [{ name: 'T', N: -200, Vy: 0, Vz: 0, Mx: 0, My: 30, Mz: 5 }]; er3 = EPC.compute(eps);
-  check('SHS, 8 boulons : F_t = 200/8 + M_y·140/Σz² + M_z·50/Σy² [kN]', Math.max(...er3.FtBolt) / 1e3, (25e3 + 30e6 * 140 / 88400 + 5e6 * 50 / 88400) / 1e3);
+  eps = EPC.defaultState(); eps.shape = 'rhs'; eps.loads = [{ name: 'T', N: -800, Vy: 0, Vz: 0, Mx: 0, My: 5, Mz: 2 }]; er3 = EPC.compute(eps);
+  check('SHS, traction dominante (tous boulons tendus) : F_t = 800/8 + M_y·140/Σz² + M_z·50/Σy² [kN]', Math.max(...er3.FtBolt) / 1e3, (100e3 + 5e6 * 140 / 88400 + 2e6 * 50 / 88400) / 1e3);
+  eps.loads = [{ name: 'T', N: 0, Vy: 0, Vz: 0, Mx: 0, My: 30, Mz: 0 }]; er3 = EPC.compute(eps);
+  { const m = 40, S2 = 2 * Math.pow(200 + m, 2) + 2 * 150 * 150 + 2 * 50 * 50;
+    check('SHS, M_y = 30 kN·m : pivot sur la paroi comprimée, F_t = M·(h + m)/Σh_i² [kN]', Math.max(...er3.FtBolt) / 1e3, 30e6 * (200 + m) / S2 / 1e3); }
+  eps = EPC.defaultState(); eps.Ilay.nInBot = 2; er3 = EPC.compute(eps);
+  { const rI = er3.Mres.bot.rows.find((q) => q.type === 'inner'), S = er3.S, mw = (150 - S.tw) / 2 - 0.8 * 5 * Math.SQRT2, e = 75;
+    check('Rangée intérieure d’extrémité de groupe : l_eff,nc = min(4m + 1,25e ; 2m + 0,625e + p/2) (tab. 6.6)', rI.cap.nc, Math.min(4 * mw + 1.25 * e, 2 * mw + 0.625 * e + 40)); }
+  eps = EPC.defaultState(); eps.plateGrade = 'S235'; er3 = EPC.compute(eps);
+  check('Soudure âme, poutre S355 / platine S235 : f_vw = min(470/0,9 ; 360/0,8)/(√3·1,25)·a [N/mm]', er3.checks.find((c) => c.id === 'ww').Rd, Math.min(470 / 0.9, 360 / 0.8) / (Math.sqrt(3) * 1.25) * 5);
 
   const lib = []; let nLib = 0, nBad = 0;
   const props = [['A', 6], ['Iy', 7], ['Wely', 8], ['Wply', 9], ['Avz', 10], ['Iz', 11], ['Welz', 12], ['Wplz', 13], ['It', 14]];

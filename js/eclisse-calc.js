@@ -17,9 +17,14 @@
   const CLASSES = { '4.6': { fub: 400, fyb: 240, av: 0.6 }, '5.6': { fub: 500, fyb: 300, av: 0.6 }, '8.8': { fub: 800, fyb: 640, av: 0.6 }, '10.9': { fub: 1000, fyb: 900, av: 0.5 } };
   const MU = { A: 0.5, B: 0.4, C: 0.3, D: 0.2 };
   const KS = { normal: 1, oversize: 0.85, slotShortT: 0.85, slotLongT: 0.7 };
-  // fu [MPa] — tableau 3.1 de l'EN 1993-1-1 (t ≤ 40 / 40 < t ≤ 80)
-  const FU = { S235: [360, 360], S275: [430, 410], S355: [490, 470], S420: [520, 500], S460: [540, 530] };
-  const fuOf = (g, t) => (FU[g] || FU.S355)[t <= 40 ? 0 : 1];
+  // f_u [MPa] minimal selon les normes de produit, cohérent avec f_y (choix a) de 3.2.1 retenu par l'AN française) :
+  // NF EN 10025-2 (S235 à S355, 3 < t ≤ 100 / 100 < t ≤ 150), NF EN 10025-4 (S420M, S460M : t ≤ 40 / 63 / 80 / 100)
+  const FU = { S235: [[100, 360], [150, 350]], S275: [[100, 410], [150, 400]], S355: [[100, 470], [150, 450]],
+    S420: [[40, 520], [63, 500], [80, 480], [100, 470]], S460: [[40, 540], [63, 530], [80, 510], [100, 500]] };
+  const fuOf = (g, t) => { const L = FU[g] || FU.S355; for (const [tm, f] of L) if (t <= tm) return f; return L[L.length - 1][1]; };
+  // trous : diamètre (EN 1090-2 tableau 11) et réduction de pression diamétrale (EN 1993-1-8 tableau 3.4, notes 2 et 3)
+  const HOLES = { normal: { add: 0, kb: 1 }, oversize: { add: 'over', kb: 0.8 }, slotShortT: { add: 0, kb: 0.6 }, slotLongT: { add: 0, kb: 0.6 } };
+  const d0Hole = (d, holes) => { const h = HOLES[holes] || HOLES.normal; if (h.add !== 'over') return d0Of(d); return d + (d <= 14 ? 3 : d <= 22 ? 4 : d <= 24 ? 6 : 8); };
 
   const COMPS = [
     { id: 'N', label: 'N', unit: 'kN', title: 'Effort normal' },
@@ -110,7 +115,7 @@
   // ---------- répartition du torseur entre les plats ----------
   function distribution(S, L, share) {
     const hf = S.h - S.tf, Af = S.b * S.tf, Aw = S.A - 2 * Af;
-    const Iyw = S.tw * Math.pow(S.h - 2 * S.tf, 3) / 12;
+    const Iyw = S.tw * Math.pow(Math.max(0, S.h - 2 * S.tf - 2 * (S.r || 0)), 3) / 12;   // partie droite de l'âme (hors congés), seule éclissée
     const eta = share === 'semelles' ? 0 : Math.min(1, Iyw / S.Iy);
     const z = () => ({ top: { Fx: 0, Ft: 0, M: 0 }, web: { Fx: 0, Ft: 0, M: 0 }, bot: { Fx: 0, Ft: 0, M: 0 } });
     const per = {};
@@ -178,13 +183,23 @@
     const S = beamOf(s); R.S = S;
     if (!S) { R.valid = false; R.warnings.push('Section invalide : profil en I à ailes parallèles ou PRS requis.'); return R; }
     const g = Math.max(0, num(s.gap));
+    {
+      const pos = [['Pince e₁ (plats)', s.fl.e1], ['Pince e₁ (semelle)', s.fl.e1b], ['Entraxe p₁ semelles', s.fl.n1 > 1 ? s.fl.p1 : 1], ['Pince w', s.fl.w],
+        ['Plat ext. sup. b × t', Math.min(num(s.top.bo), num(s.top.to))], ['Plat ext. inf. b × t', Math.min(num(s.bot.bo), num(s.bot.to))],
+        ['Plats int. sup.', s.top.double ? Math.min(num(s.top.bi), num(s.top.ti)) : 1], ['Plats int. inf.', s.bot.double ? Math.min(num(s.bot.bi), num(s.bot.ti)) : 1],
+        ['Plats d’âme h × t', Math.min(num(s.web.hp), num(s.web.tp))], ['Pince e₁ (âme)', s.web.e1], ['Pince e₁ (plats d’âme)', s.web.e1b], ['Entraxe p₁ âme', s.web.n1 > 1 ? s.web.p1 : 1], ['Entraxe p₂ âme', s.web.n2 > 1 ? s.web.p2 : 1],
+        ['n₁ semelles', s.fl.n1], ['n₁ âme', s.web.n1], ['n₂ âme', s.web.n2]].filter((q) => !(num(q[1]) > 0));
+      if (pos.length) { R.valid = false; R.warnings.push('Données invalides (valeurs nulles ou négatives) : ' + pos.map((q) => q[0]).join(', ') + '.'); return R; }
+    }
     const gam = { M0: num(s.gam.M0, 1) || 1, M2: num(s.gam.M2, 1.25) || 1.25, M3: num(s.gam.M3, 1.25) || 1.25, M3ser: num(s.gam.M3ser, 1.1) || 1.1 };
-    const b = s.bolt, d = num(b.d, 20), As = BOLTS[d] || 245, d0 = d0Of(d), Ab = PI * d * d / 4;
+    const b = s.bolt, d = num(b.d, 20), As = BOLTS[d] || 245, d0 = d0Hole(d, b.holes), Ab = PI * d * d / 4;
     const bc = CLASSES[b.cls] || CLASSES['8.8'];
     const pre = !!b.pre && (b.cls === '8.8' || b.cls === '10.9');
     if (b.pre && !pre) R.warnings.push('Précontrainte : seules les classes 8.8 et 10.9 sont admises (EN 1993-1-8 § 3.1.2) — calcul en boulons ordinaires.');
     const cat = pre ? (b.cat === 'B' ? 'B' : 'C') : 'A';
     const fy = D.fyOf(s.grade, S.tf, 'en10025'), fu = fuOf(s.grade, S.tf);
+    const gChk = [];
+    const geoC = (grp, id, label, need, have, note) => gChk.push({ grp, id, label, ref: '1-8 tab. 3.3 · géométrie', Ed: need, Rd: have, rg: have > 0 ? Math.max(0, need) / have : Infinity, r: !(have > 0) || need > have + 1e-6 ? (have > 0 ? need / have : Infinity) : 0, ratioOnly: true, geo: true, note });
     R.g = g; R.gam = gam; R.cat = cat; R.pre = pre;
     R.bolt = { d, d0, As, Ab, fub: bc.fub, cls: b.cls, threads: b.threads !== false };
     const Lk = { N: num(LD.N) * 1e3, Vy: num(LD.Vy) * 1e3, Vz: num(LD.Vz) * 1e3, Mx: num(LD.Mx) * 1e6, My: num(LD.My) * 1e6, Mz: num(LD.Mz) * 1e6 };
@@ -201,7 +216,7 @@
     const BP = (dd) => {
       const as = BOLTS[dd] || 245, ab = PI * dd * dd / 4;
       const fv = (R.bolt.threads ? bc.av * as : 0.6 * ab) * bc.fub / gam.M2;
-      return { d: dd, d0: d0Of(dd), As: as, Ab: ab, FvPlane: fv, FpC: 0.7 * bc.fub * as, fub: bc.fub, cls: b.cls, threads: R.bolt.threads, ks, mu };
+      return { d: dd, d0: d0Hole(dd, b.holes), As: as, Ab: ab, FvPlane: fv, FpC: 0.7 * bc.fub * as, fub: bc.fub, cls: b.cls, threads: R.bolt.threads, ks, mu };
     };
     const dw = b.dw && b.dw !== 'same' ? num(b.dw, d) : d;
     const BF = BP(d), BW = BP(dw);
@@ -248,9 +263,10 @@
           W: to * bo * bo / 6 + (dbl ? 2 * (ti * Math.pow(bi, 3) / 12 + ti * bi * Math.pow(tIn0 + bi / 2, 2)) / (bo / 2) : 0),
           fy: fyp(Math.max(to, dbl ? ti : 0)), fu: fup(Math.max(to, dbl ? ti : 0)), tmin: dbl ? Math.min(to, ti) : to }
       };
-      if (dbl && tIn0 + bi > S.b / 2 + 1e-6) R.warnings.push(`${k === 'top' ? 'Semelle supérieure' : 'Semelle inférieure'} : les plats intérieurs (${bi} mm) dépassent du bord de la semelle (place disponible ${(S.b / 2 - tIn0).toFixed(0)} mm depuis le congé).`);
-      if (dbl && (tmin - d0 / 2 < tIn0 || tmax + d0 / 2 > tIn0 + bi)) R.warnings.push(`${k === 'top' ? 'Semelle supérieure' : 'Semelle inférieure'} : des trous de boulons sortent des plats intérieurs — revoir la pince w ou la largeur b_i.`);
-      if (tmax + d0 / 2 > bo / 2) R.warnings.push(`${k === 'top' ? 'Semelle supérieure' : 'Semelle inférieure'} : les trous sortent du plat extérieur.`);
+      if (dbl) geoC(k, 'g_bi', 'Géométrie — plats intérieurs dans la largeur de semelle', tIn0 + bi, S.b / 2, `t_congé + b_i = ${(tIn0 + bi).toFixed(0)} mm ≤ b/2 = ${(S.b / 2).toFixed(0)} mm`);
+      if (dbl) geoC(k, "g_hi0", "Géométrie — trous dégagés du bord intérieur des plats intérieurs", tIn0, tmin - d0 / 2, `bord du trou ${(tmin - d0 / 2).toFixed(0)} mm ≥ bord du plat ${tIn0.toFixed(0)} mm`);
+      if (dbl) geoC(k, "g_hi", "Géométrie — trous contenus dans les plats intérieurs", tmax + d0 / 2, tIn0 + bi, `bords des trous : ${(tmin - d0 / 2).toFixed(0)} à ${(tmax + d0 / 2).toFixed(0)} mm ; plats : ${tIn0.toFixed(0)} à ${(tIn0 + bi).toFixed(0)} mm`);
+      geoC(k, 'g_ho', 'Géométrie — trous contenus dans le plat extérieur', tmax + d0 / 2, bo / 2, `t_max + d₀/2 = ${(tmax + d0 / 2).toFixed(0)} mm ≤ b_o/2 = ${(bo / 2).toFixed(0)} mm`);
     });
     if (FG.ts.some((t) => Math.abs(t) - 0.9 * d < S.tw / 2 + S.r)) R.warnings.push(`Semelles : les lignes de boulons les plus proches de l'âme (|t| = ${(Math.min(...FG.ts.map(Math.abs))).toFixed(0)} mm) laissent moins de place qu'une rondelle (≈ 1,8·d) contre le congé de raccordement (t_w/2 + r = ${(S.tw / 2 + S.r).toFixed(1)} mm).`);
 
@@ -272,28 +288,31 @@
         id: 'web', kind: 'web', B: BW, side: sd.side, G: WG, nPl: 2, plies, loads, tot: sd.tot, Lj, bL: betaLf(Lj, dw), force: tq,
         plate: { hp, tp, A: 2 * hp * tp, Anet: 2 * (hp - WG.n2 * d0) * tp, W: 2 * tp * hp * hp / 6, fy: fyp(tp), fu: fup(tp) }
       };
-      if (hp > hw - 2 * S.r + 1e-6) R.warnings.push(`Âme : la hauteur des plats (${hp} mm) dépasse la hauteur droite entre congés (${(hw - 2 * S.r).toFixed(0)} mm).`);
+      geoC('web', 'g_hp', 'Géométrie — plats d’âme entre congés', hp, hw - 2 * S.r, `h_p = ${hp} mm ≤ h_w − 2r = ${(hw - 2 * S.r).toFixed(0)} mm`);
       if (zmax + d0 / 2 > hp / 2) R.warnings.push('Âme : les trous sortent des plats d\'âme.');
     }
     R.groups = groups;
 
     // ---------- dispositions constructives (tableau 3.3) ----------
-    const minChk = (lbl, v, lim) => { if (v < lim - 1e-6) R.warnings.push(`${lbl} = ${v.toFixed(1)} mm < ${lim.toFixed(1)} mm (EN 1993-1-8 tableau 3.3).`); };
+    let gi = 0;
+    const minChk = (lbl, v, lim, grp) => geoC(grp, 'g' + (gi++), lbl + ' ≥ min', lim, v, `${v.toFixed(1)} mm ≥ ${lim.toFixed(1)} mm`);
     ['top', 'bot', 'web'].forEach((k) => {
       const G = groups[k], nm = k === 'web' ? 'Âme' : k === 'top' ? 'Semelle sup.' : 'Semelle inf.';
       const { d0 } = G.B;
-      G.plies.forEach((p) => { minChk(`${nm} · ${p.label.toLowerCase()} : pince longitudinale e₁`, p.eEnd, 1.2 * d0); minChk(`${nm} · ${p.label.toLowerCase()} : pince transversale e₂`, p.eEdge, 1.2 * d0); });
-      if (G.G.n1 > 1) minChk(`${nm} : entraxe p₁`, G.G.p1, 2.2 * d0);
-      if (k === 'web' && G.G.n2 > 1) minChk(`${nm} : entraxe p₂`, G.G.p2, 2.4 * d0);
-      if (k !== 'web' && G.G.n2s > 1) minChk(`${nm} : entraxe p₂`, G.G.p2, 2.4 * d0);
+      G.plies.forEach((p) => { minChk(`Pince longitudinale e₁ — ${p.label.toLowerCase()}`, p.eEnd, 1.2 * d0, k); minChk(`Pince transversale e₂ — ${p.label.toLowerCase()}`, p.eEdge, 1.2 * d0, k); });
+      if (G.G.n1 > 1) minChk('Entraxe p₁', G.G.p1, 2.2 * d0, k);
+      if (k === 'web' && G.G.n2 > 1) minChk('Entraxe p₂', G.G.p2, 2.4 * d0, k);
+      if (k !== 'web' && G.G.n2s > 1) minChk('Entraxe p₂', G.G.p2, 2.4 * d0, k);
+      if (k !== 'web' && G.G.n2s < 2) minChk('Entraxe w entre les deux lignes', num(s.fl.w), 2.4 * d0, k);
     });
-    if (s.fl.n2s < 2 && num(s.fl.w) < 2.4 * d0) R.warnings.push('Semelles : pince w entre les deux lignes trop faible.');
 
     // ---------- vérifications ----------
     const add = (grp, id, label, ref, Ed, Rd, extra) => {
       const r = Rd > 0 ? Math.abs(Ed) / Rd : (Math.abs(Ed) > 0 ? Infinity : 0);
       R.checks.push(Object.assign({ grp, id, label, ref, Ed, Rd, r }, extra || {}));
     };
+    gChk.forEach((c) => R.checks.push(c));
+    const kbH = (HOLES[b.holes] || HOLES.normal).kb;
     const fyb = fy;
     ['top', 'web', 'bot'].forEach((k) => {
       const G = groups[k];
@@ -305,13 +324,16 @@
       // fourrure sous les plats de semelle (3.6.1 (12)) : β_p = 9d/(8d + 3t_p) si t_p > d/3
       const pack = G.kind === 'flange' ? Math.max(0, num(s[k].pack)) : 0;
       G.pack = pack; G.bp = pack > d / 3 ? Math.min(1, 9 * d / (8 * d + 3 * pack)) : 1;
-      const Fv = FvPlane * G.nPl * G.bL * G.bp;
+      // plans de cisaillement : l'effort se partage au prorata des aires des plats ; le plan le plus chargé gouverne
+      G.shMax = G.kind === 'flange' ? Math.max(...G.plies.filter((p) => p.id !== 'beam').map((p) => p.share)) : 0.5;
+      G.nEff = 1 / G.shMax;
+      const Fv = FvPlane * G.nEff * G.bL * G.bp;
       G.Fv = Fv;
-      if (cat !== 'C') add(k, 'v', `Boulons — cisaillement (${G.nPl} plan${G.nPl > 1 ? 's' : ''}${G.bL < 1 ? ', β_Lf = ' + G.bL.toFixed(3) : ''}${G.bp < 1 ? ', β_p = ' + G.bp.toFixed(3) : ''})`, '3.6.1 tab. 3.4', fm.f, Fv);
-      else add(k, 'v', `Boulons — cisaillement (${G.nPl} plan${G.nPl > 1 ? 's' : ''})`, '3.6.1 tab. 3.4', fm.f, Fv);
+      if (cat !== 'C') add(k, 'v', `Boulons — cisaillement (${G.nPl} plan${G.nPl > 1 ? 's' : ''}${G.nPl > 1 && G.shMax > 0.501 ? ', plan le plus chargé : ' + Math.round(G.shMax * 100) + ' %' : ''}${G.bL < 1 ? ', β_Lf = ' + G.bL.toFixed(3) : ''}${G.bp < 1 ? ', β_p = ' + G.bp.toFixed(3) : ''})`, '3.6.1 tab. 3.4', fm.f, Fv);
+      else add(k, 'v', `Boulons — cisaillement (${G.nPl} plan${G.nPl > 1 ? 's' : ''}${G.nPl > 1 && G.shMax > 0.501 ? ', plan le plus chargé : ' + Math.round(G.shMax * 100) + ' %' : ''})`, '3.6.1 tab. 3.4', fm.f, Fv);
       // glissement
       if (cat !== 'A') {
-        const Fs = ks * G.nPl * mu * FpC / (cat === 'C' ? gam.M3 : gam.M3ser);
+        const Fs = ks * G.nEff * mu * FpC / (cat === 'C' ? gam.M3 : gam.M3ser);
         G.Fs = Fs;
         add(k, 's', cat === 'C' ? 'Boulons précontraints — glissement à l\'ELU (cat. C)' : 'Boulons précontraints — glissement à l\'ELS (cat. B)', '3.9.1 (3.6)', cat === 'C' ? fm.f : fm.f * num(b.kser, 0.7), Fs);
       }
@@ -322,12 +344,13 @@
         const pPerpX = k === 'web' ? Gg.p2 : (Gg.n2s > 1 ? Gg.p2 : Gg.w);
         const bx = bearing(d, d0, p.t, p.fu, bc.fub, gam.M2, { eEnd: p.eEnd, pAlong: Gg.p1, nAlong: Gg.n1, eEdge: p.eEdge, pPerp: pPerpX, nPerp: nPerpX });
         const bt = bearing(d, d0, p.t, p.fu, bc.fub, gam.M2, { eEnd: p.eEdge, pAlong: pPerpX, nAlong: nPerpX, eEdge: p.eEnd, pPerp: Gg.p1, nPerp: Gg.n1 });
+        bx.Fb *= kbH; bt.Fb *= kbH; bx.kb = kbH; bt.kb = kbH;
         // pli intérieur : chaque boulon ne traverse qu'un des deux plats intérieurs
         let worst = 0, iw = 0;
         G.tot.forEach((f, i) => { const v = Math.hypot(f.fx * p.share / bx.Fb, f.ft * p.share / bt.Fb); if (v > worst) { worst = v; iw = i; } });
         const f = G.tot[iw];
         add(k, 'b_' + p.id, `Pression diamétrale — ${p.label.toLowerCase()} (t = ${p.t} mm)`, '3.6.1 tab. 3.4', worst, 1,
-          { note: `F_x = ${(f.fx * p.share / 1e3).toFixed(1)} kN / F_b,x,Rd = ${(bx.Fb / 1e3).toFixed(1)} kN (k₁ = ${bx.k1.toFixed(2)}, α_b = ${bx.ab.toFixed(2)}) ; F_t = ${(f.ft * p.share / 1e3).toFixed(1)} kN / F_b,t,Rd = ${(bt.Fb / 1e3).toFixed(1)} kN (k₁ = ${bt.k1.toFixed(2)}, α_b = ${bt.ab.toFixed(2)}) ; √(Σ²)`, ratioOnly: true, bx, bt });
+          { note: `F_x = ${(f.fx * p.share / 1e3).toFixed(1)} kN / F_b,x,Rd = ${(bx.Fb / 1e3).toFixed(1)} kN (k₁ = ${bx.k1.toFixed(2)}, α_b = ${bx.ab.toFixed(2)}${kbH < 1 ? ', k_trou = ' + kbH : ''}) ; F_t = ${(f.ft * p.share / 1e3).toFixed(1)} kN / F_b,t,Rd = ${(bt.Fb / 1e3).toFixed(1)} kN (k₁ = ${bt.k1.toFixed(2)}, α_b = ${bt.ab.toFixed(2)}) ; √(Σ²)`, ratioOnly: true, bx, bt });
         p.bx = bx; p.bt = bt;
       });
 
@@ -407,7 +430,7 @@
   // pinces ≥ 1,5·d0, une ligne de boulons par côté de l'âme au milieu des plats intérieurs.
   function propose(s) {
     const S = beamOf(s); if (!S) return false;
-    const d = num(s.bolt.d, 20), d0 = d0Of(d);
+    const d = num(s.bolt.d, 20), d0 = d0Hole(d, s.bolt.holes);
     const STD = [6, 8, 10, 12, 15, 20, 25, 30, 35, 40, 50, 60];
     const up = (t) => STD.find((x) => x >= t - 1e-9) || Math.ceil(t / 5) * 5;
     const r5 = (x) => Math.floor(x / 5) * 5;
@@ -425,7 +448,7 @@
     });
     const Af = S.b * S.tf, n1 = Math.min(8, Math.max(2, Math.ceil(0.9 * Af * D.fyOf(s.grade, S.tf, 'en10025') / (2 * 0.6 * CLASSES[s.bolt.cls].fub * (BOLTS[d] || 245) / 1.25) / 2)));
     Object.assign(s.fl, { n1, p1: p, e1: e, e1b: e, n2s: 1, w });
-    const dW = s.bolt.dw && s.bolt.dw !== 'same' ? num(s.bolt.dw, d) : d, d0w = d0Of(dW);
+    const dW = s.bolt.dw && s.bolt.dw !== 'same' ? num(s.bolt.dw, d) : d, d0w = d0Hole(dW, s.bolt.holes);
     const ew = Math.ceil(1.5 * d0w / 5) * 5, pw = Math.ceil(3 * d0w / 5) * 5;
     const hw = S.h - 2 * S.tf, hp = Math.max(r5(hw - 2 * S.r - 10), 2 * ew);
     const n2 = Math.max(1, Math.floor((hp - 2 * ew) / pw) + 1), p2 = n2 > 1 ? r5((hp - 2 * ew) / (n2 - 1)) : pw;
@@ -466,5 +489,5 @@
     } catch (e) { return null; }
   }
 
-  window.FirmitasSpliceCalc = { groupForces, bearing, compute, computeEnv, propose, defaultState, upgrade, summary, BOLTS, CLASSES, MU, KS, COMPS, GROUPS, d0Of, fuOf, num, beamOf };
+  window.FirmitasSpliceCalc = { HOLES, d0Hole, groupForces, bearing, compute, computeEnv, propose, defaultState, upgrade, summary, BOLTS, CLASSES, MU, KS, COMPS, GROUPS, d0Of, fuOf, num, beamOf };
 })();

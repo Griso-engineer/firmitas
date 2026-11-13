@@ -232,6 +232,7 @@
         ${field('Diamètre — âme', sel('bolt.dw', [['same', 'Identique aux semelles']].concat(Object.keys(C.BOLTS).map((d) => [d, 'M' + d]))))}
         ${field('Classe', sel('bolt.cls', Object.keys(C.CLASSES).map((x) => [x, x]), { rr: true }))}
         ${field('γ<sub>M2</sub>', inp('gam.M2'))}
+        ${field('Trous', sel('bolt.holes', [['normal', 'Normaux'], ['oversize', 'Surdimensionnés — k_b = 0,8, k_s = 0,85'], ['slotShortT', 'Oblongs courts ⊥ effort — k_b = 0,6, k_s = 0,85'], ['slotLongT', 'Oblongs longs ⊥ effort — k_b = 0,6, k_s = 0,7']], { rr: true }), '', 'd₀ selon EN 1090-2 ; k_b réduit la pression diamétrale')}
       </div>
       <div style="display:flex;gap:18px;flex-wrap:wrap;margin:12px 0">
         ${chk('bolt.pre', 'Boulons précontraints (HR)', true)}
@@ -240,7 +241,6 @@
       ${b.pre ? `<div class="fields">
         ${field('Catégorie', sel('bolt.cat', [['C', 'C — non-glissement à l\'ELU'], ['B', 'B — non-glissement à l\'ELS']], { rr: true }))}
         ${field('Surfaces de frottement', sel('bolt.surf', [['A', 'Classe A — μ = 0,5'], ['B', 'Classe B — μ = 0,4'], ['C', 'Classe C — μ = 0,3'], ['D', 'Classe D — μ = 0,2']]))}
-        ${field('Trous', sel('bolt.holes', [['normal', 'Normaux — k_s = 1'], ['oversize', 'Surdimensionnés — k_s = 0,85'], ['slotShortT', 'Oblongs courts ⊥ — k_s = 0,85'], ['slotLongT', 'Oblongs longs ⊥ — k_s = 0,7']]))}
         ${b.cat === 'B' ? field('Torseur ELS / ELU', inp('bolt.kser'), '', 'Rapport appliqué aux efforts des boulons') + field('γ<sub>M3,ser</sub>', inp('gam.M3ser')) : field('γ<sub>M3</sub>', inp('gam.M3'))}
       </div>` : ''}
       ${b.pre && !(b.cls === '8.8' || b.cls === '10.9') ? '<p class="note warn">Précontrainte réservée aux classes 8.8 et 10.9.</p>' : ''}
@@ -409,7 +409,7 @@
     const mx = (f) => E.rows.filter(f).reduce((a, c) => (c.r > a.r ? c : a), { r: 0, label: '' });
     const kpi = (t, o) => `<div class="kpi${o.r > 1 ? ' bad' : ''}"><b>${t}</b><span>${pct(o.r)}</span><small>${sub((o.label || '—').replace(/\s*\(.*$/, ''))}${multi && o.name ? ' · ' + esc(o.name) : ''}</small></div>`;
     const ok = E.max <= 1;
-    const rows = (g) => E.rows.filter((c) => c.grp === g).map((c) => `<tr${E.gov === c ? ' class="gov"' : ''}><td>${sub(c.label)}${c.note ? `<div class="f" style="font-size:11px">${sub(c.note)}</div>` : ''}</td><td class="f">${c.ref}</td>${multi ? `<td class="f">${esc(c.name)}</td>` : ''}<td class="num">${c.ratioOnly ? '—' : kN(c.Ed)}</td><td class="num">${c.ratioOnly ? '—' : kN(c.Rd)}</td><td class="num"><span class="ratio">${pct(c.r)}</span></td><td style="width:100px">${bar(c.r)}</td><td>${pill(c.r)}</td></tr>`).join('');
+    const rows = (g) => E.rows.filter((c) => c.grp === g).map((c) => `<tr${E.gov === c ? ' class="gov"' : ''}><td>${sub(c.label)}${c.note ? `<div class="f" style="font-size:11px">${sub(c.note)}</div>` : ''}</td><td class="f">${c.ref}</td>${multi ? `<td class="f">${esc(c.name)}</td>` : ''}<td class="num">${c.ratioOnly ? '—' : kN(c.Ed)}</td><td class="num">${c.ratioOnly ? '—' : kN(c.Rd)}</td><td class="num"><span class="ratio">${pct(c.geo ? c.rg : c.r)}</span></td><td style="width:100px">${bar(c.r)}</td><td>${pill(c.r)}</td></tr>`).join('');
     const plast = ['top', 'web', 'bot'].map((g) => `${C.GROUPS.find((x) => x.id === g).label.toLowerCase()} : ${R.groups[g].plast ? 'oui' : 'non'}`).join(' ; ');
     const warns = [...new Set(E.runs.flatMap((r) => r.warnings))];
     box.innerHTML = `${warns.map((w) => `<p class="note warn">${sub(w)}</p>`).join('')}
@@ -450,7 +450,7 @@
       const L = R.L;
       const distRow = (lbl, Q) => `<tr><td>${lbl}</td>${['top', 'web', 'bot'].map((g) => `<td class="num">${kN(Q[g].Fx)}</td><td class="num">${kN(Q[g].Ft)}</td><td class="num">${kNm(Q[g].M)}</td>`).join('')}</tr>`;
       const sc = scaleOf('tot');
-      const chkRows = E.rows.map((c) => `<tr${E.gov === c ? ' class="gov"' : ''}><td>${C.GROUPS.find((x) => x.id === c.grp).label}</td><td>${sub(c.label)}</td><td>${c.ref}</td>${multi ? `<td>${esc(c.name)}</td>` : ''}<td class="num">${c.ratioOnly ? '—' : kN(c.Ed)}</td><td class="num">${c.ratioOnly ? '—' : kN(c.Rd)}</td><td class="num">${pct(c.r)}</td><td>${c.r <= 1 ? '<span class="rp-ok">OK</span>' : '<span class="rp-ko">Non vérifié</span>'}</td></tr>`).join('');
+      const chkRows = E.rows.map((c) => `<tr${E.gov === c ? ' class="gov"' : ''}><td>${C.GROUPS.find((x) => x.id === c.grp).label}</td><td>${sub(c.label)}</td><td>${c.ref}</td>${multi ? `<td>${esc(c.name)}</td>` : ''}<td class="num">${c.ratioOnly ? '—' : kN(c.Ed)}</td><td class="num">${c.ratioOnly ? '—' : kN(c.Rd)}</td><td class="num">${pct(c.geo ? c.rg : c.r)}</td><td>${c.r <= 1 ? '<span class="rp-ok">OK</span>' : '<span class="rp-ko">Non vérifié</span>'}</td></tr>`).join('');
       const p1 = `<section class="rp-page">${head('p. 1')}
         <div class="rp-title"><h1>${esc(state.name || 'Éclisse')} — éclisse de ${esc(S.name)}${total > 1 ? ` (${idx + 1}/${total})` : ''}</h1>
         <p>Couvre-joints boulonnés de semelles et d'âme · boulons M${bo.d} ${bo.cls}${R.pre ? ` précontraints, catégorie ${R.cat}` : ', catégorie A'} · NF EN 1993-1-8 et NF EN 1993-1-1 avec annexes nationales françaises</p></div>

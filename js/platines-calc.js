@@ -86,7 +86,9 @@
     const bolts = [];
     if (s.shape === 'chs') {
       const n = Math.max(3, Math.round(num(L.nChs, 8))), Rb = S.d / 2 + m;
-      for (let k = 0; k < n; k++) { const a = PI / 2 + PI / n + 2 * PI * k / n; bolts.push({ y: Rb * Math.cos(a), z: Rb * Math.sin(a), trib: 2 * PI * Rb / n }); }
+      // largeur tributaire au pied du cordon (rayon r + a√2), et non au cercle des boulons
+      const Rt = S.d / 2 + num(s.plate.aw) * SQ2, Rw = (S.d - S.t) / 2;
+      for (let k = 0; k < n; k++) { const a = PI / 2 + PI / n + 2 * PI * k / n; bolts.push({ y: Rb * Math.cos(a), z: Rb * Math.sin(a), trib: 2 * PI * Rt / n, tribW: 2 * PI * Rw / n }); }
       return { bolts, m, e, Rb, Dp: 2 * (Rb + e), round: true, n };
     }
     const ns = Math.max(1, Math.round(num(L.nSide, 2))), sides = num(L.sides) === 2 ? 2 : 4;
@@ -112,6 +114,10 @@
     const b = s.bolt, d = num(b.d, 20), As = BOLTS[d] || 245, d0 = d0Of(d), Ab = PI * d * d / 4, bc = CLASSES[b.cls] || CLASSES['8.8'];
     const threads = b.threads !== false;
     const tp = num(s.plate.tp), fyp = D.fyOf(s.plateGrade, tp, 'en10025'), fup = fuOf(s.plateGrade, tp);
+    {
+      const pos = [['t_p', s.plate.tp], ['a (âme / paroi)', s.plate.aw]].concat(S.type === 'I' ? [['a (semelles)', s.plate.af], ['w', s.Ilay.w], ['b_p', s.Ilay.bp]] : [['m', s.Tlay.m], ['e', s.Tlay.e]]).filter((q) => !(num(q[1]) > 0));
+      if (pos.length) { R.valid = false; R.warnings.push('Données invalides (valeurs nulles ou négatives) : ' + pos.map((q) => q[0]).join(', ') + '.'); return R; }
+    }
     const tm = S.type === 'I' ? S.tf : S.t, fym = D.fyOf(s.grade, tm, 'en10025'), fum = fuOf(s.grade, tm);
     const FtRd = 0.9 * bc.fub * As / gam.M2, BpRd = 0.6 * PI * (DM[d] || 1.6 * d) * tp * fup / gam.M2;
     const Ftb = Math.min(FtRd, BpRd);
@@ -123,19 +129,23 @@
       R.checks.push(Object.assign({ grp, id, label, ref, Ed, Rd, r }, extra || {}));
     };
     const aw = num(s.plate.aw), af = num(s.plate.af);
-    const fw = fum / (Math.sqrt(3) * (BETAW[s.grade] || 0.9) * gam.M2);    // résistance d'une soudure d'angle par unité de gorge (4.5.3.3)
+    const gChk = [];
+    const geoC = (id, label, need, have, note) => gChk.push({ grp: 'plate', id, label, ref: '1-8 tab. 3.3 · géométrie', Ed: need, Rd: have, rg: have > 0 ? Math.max(0, need) / have : Infinity, r: !(have > 0) || need > have + 1e-6 ? (have > 0 ? need / have : Infinity) : 0, ratioOnly: true, geo: true, note });
+    // résistance d'une soudure d'angle par unité de gorge (4.5.3.3) : pièce la plus faible des deux assemblées
+    const fw = Math.min(fum / (BETAW[s.grade] || 0.9), fup / (BETAW[s.plateGrade] || 0.9)) / (Math.sqrt(3) * gam.M2);
 
     if (S.type === 'I') {
       const G = geomI(s, S, d); R.geo = G;
       if (Math.abs(L.Mz) > 1 || Math.abs(L.Mx) > 1) R.warnings.push('M_z et M_x ne sont pas traités pour un profil en I (méthode des composantes de l\'EN 1993-1-8 en flexion d\'axe fort) : vérification incomplète.');
-      if (G.e < 1.2 * d0 - 1e-6) R.warnings.push(`Pince transversale e = (b_p − w)/2 = ${G.e.toFixed(1)} mm < 1,2·d₀.`);
-      if (G.bp < S.b - 1e-6) R.warnings.push(`Platine plus étroite (${G.bp} mm) que la semelle (${S.b} mm).`);
+      geoC('g_e', 'Pince transversale e = (b_p − w)/2 ≥ 1,2·d₀', 1.2 * d0, G.e, `${G.e.toFixed(1)} mm ≥ ${(1.2 * d0).toFixed(1)} mm`);
+      geoC('g_bp', 'Géométrie — platine au moins aussi large que la semelle', S.b, G.bp, `b_p = ${G.bp} mm ≥ b = ${S.b} mm`);
       const mw = (G.w - S.tw) / 2 - 0.8 * aw * SQ2;
-      if (mw <= 0.5 * d) R.warnings.push(`Pince w trop faible : la distance boulon–cordon d'âme m = ${mw.toFixed(1)} mm est trop petite pour la tête / l'écrou.`);
+      geoC('g_mw', 'Géométrie — distance boulon–cordon d’âme m > 0,5·d (clé, écrou)', 0.5 * d, mw, `m = ${mw.toFixed(1)} mm > ${(0.5 * d).toFixed(1)} mm`);
       if (G.w / 2 + 1.0 * d > S.b / 2 && G.rows.some((r) => r.type !== 'ext')) R.info.push('Rangées intérieures : vérifier le passage de la clé entre semelle et âme.');
       const mfx = G.mx - 0.8 * af * SQ2;                      // rangée débordante : distance boulon–cordon de semelle
-      if (G.rows.some((r) => r.type === 'ext') && mfx <= 0.5 * d) R.warnings.push(`Rangée débordante trop proche de la semelle (m_x = ${mfx.toFixed(1)} mm).`);
-      if (G.ex < 1.2 * d0 - 1e-6 && G.rows.some((r) => r.type === 'ext')) R.warnings.push(`Pince e_x de la rangée débordante = ${G.ex} mm < 1,2·d₀.`);
+      if (G.rows.some((r) => r.type === 'ext')) geoC('g_mx', 'Géométrie — rangée débordante : distance au cordon de semelle m_x > 0,5·d', 0.5 * d, mfx, `m_x = ${mfx.toFixed(1)} mm > ${(0.5 * d).toFixed(1)} mm`);
+      if (G.rows.some((r) => r.type === 'ext')) geoC('g_ex', 'Pince e_x de la rangée débordante ≥ 1,2·d₀', 1.2 * d0, G.ex, `${G.ex} mm ≥ ${(1.2 * d0).toFixed(1)} mm`);
+      if (G.rows.length > 1) { const zs0 = G.rows.map((r) => r.z); const pm0 = Math.min(...zs0.slice(1).map((z, i) => zs0[i] - z)); geoC('g_p', 'Entraxe vertical minimal entre rangées ≥ 2,2·d₀', 2.2 * d0, pm0, `${pm0.toFixed(1)} mm ≥ ${(2.2 * d0).toFixed(1)} mm`); }
       const nI = Math.min(G.e, 1.25 * mw);
       // longueurs efficaces par rangée (tableau 6.6), groupes de rangées intérieures de chaque côté
       const rowCap = (r, tensionSide) => {
@@ -152,9 +162,9 @@
           // effet de groupe : rangées intérieures voisines du même côté
           const same = G.rows.filter((q) => q.type !== 'ext' && q.side === r.side);
           if (same.length > 1) {
-            const ps = same.filter((q) => q !== r).map((q) => Math.abs(q.z - r.z));
+            const ps = same.filter((q) => q.i !== r.i).map((q) => Math.abs(q.z - r.z));
             const pn = Math.min(...ps);
-            const isEnd = same[0] === r || same[same.length - 1] === r;
+            const isEnd = same[0].i === r.i || same[same.length - 1].i === r.i;   // r est une copie (Mres) : comparaison par indice
             let cpg, ncg;
             if (adjT) { cpg = PI * m + pn; ncg = 0.5 * pn + alpha * m - (2 * m + 0.625 * G.e); }
             else if (isEnd) { cpg = PI * m + pn; ncg = 2 * m + 0.625 * G.e + 0.5 * pn; }
@@ -226,7 +236,7 @@
       const Af = S.b * S.tf, Aw = S.A - 2 * Af;
       const Ffl = Math.abs(L.My) / (S.h - S.tf) + Math.max(0, -L.N) * Af / S.A;
       const Lf = 2 * S.b - S.tw, Lw = 2 * (S.h - 2 * S.tf - 2 * S.r);
-      add('weld', 'wf', `Soudure de semelle (2 cordons a = ${af} mm, L = ${Lf.toFixed(0)} mm)`, '4.5.3.3', Ffl / Lf, fw * af, { perLen: true });
+      add('weld', 'wf', `Soudure de semelle (2 cordons a = ${af} mm, L = ${Lf.toFixed(0)} mm ; F_fl et V_y/2 combinés)`, '4.5.3.3', Math.hypot(Ffl, Math.abs(L.Vy) / 2) / Lf, fw * af, { perLen: true });
       add('weld', 'ww', `Soudure d'âme (2 cordons a = ${aw} mm, L = ${Lw.toFixed(0)} mm)`, '4.5.3.3', Math.hypot(Math.abs(L.Vz), Math.max(0, -L.N) * Aw / S.A) / Lw, fw * aw, { perLen: true });
       R.Ftb = Ftb;
     } else {
@@ -234,19 +244,34 @@
       const G = geomT(s, S); R.geo = G;
       const t = S.t, aT = aw;
       const mEff = G.m - 0.8 * aT * SQ2;
-      if (mEff <= 0.5 * d) R.warnings.push(`Boulons trop proches de la paroi : m = ${mEff.toFixed(1)} mm (passage de la clé et du cordon à vérifier).`);
-      if (G.e < 1.2 * d0 - 1e-6) R.warnings.push(`Pince e = ${G.e} mm < 1,2·d₀.`);
+      geoC('g_m', 'Géométrie — distance boulon–cordon m > 0,5·d (clé, écrou)', 0.5 * d, mEff, `m = ${mEff.toFixed(1)} mm > ${(0.5 * d).toFixed(1)} mm`);
+      geoC('g_e', 'Pince e ≥ 1,2·d₀', 1.2 * d0, G.e, `${G.e} mm ≥ ${(1.2 * d0).toFixed(1)} mm`);
+      { const P = []; for (let i = 0; i < G.bolts.length; i++) for (let j = i + 1; j < G.bolts.length; j++) P.push(Math.hypot(G.bolts[i].y - G.bolts[j].y, G.bolts[i].z - G.bolts[j].z)); if (P.length) { const pm0 = Math.min(...P); geoC('g_p', 'Entraxe minimal entre boulons ≥ 2,2·d₀', 2.2 * d0, pm0, `${pm0.toFixed(1)} mm ≥ ${(2.2 * d0).toFixed(1)} mm`); } }
       const nT = Math.min(G.e, 1.25 * mEff);
       const n = G.bolts.length;
       const Iz = G.bolts.reduce((a, q) => a + q.z * q.z, 0), Iy = G.bolts.reduce((a, q) => a + q.y * q.y, 0);
       // tractions élastiques (boulons rapportés au centre du groupe ; N > 0 compression)
-      const Ft = G.bolts.map((q) => -L.N / n + (Iz > 0 ? L.My * (-q.z) / Iz : 0) + (Iy > 0 ? L.Mz * (-q.y) / Iy : 0));
+      // tractions : si tous les boulons restent tendus (traction dominante), répartition élastique autour du centre ;
+      // sinon la platine pivote sur la paroi comprimée du tube (bras de levier mesurés depuis cette paroi).
+      const FtEl = G.bolts.map((q) => -L.N / n + (Iz > 0 ? L.My * (-q.z) / Iz : 0) + (Iy > 0 ? L.Mz * (-q.y) / Iy : 0));
+      const Mres = Math.hypot(L.My, L.Mz);
+      let Ft = FtEl, pivot = null;
+      if (Math.min(...FtEl) < 0 && Mres > 1) {
+        const uz = -L.My / Mres, uy = -L.Mz / Mres;          // direction du côté tendu (s croissant)
+        const sp = -(S.type === 'CHS' ? S.d / 2 : S.h / 2 * Math.abs(uz) + S.b / 2 * Math.abs(uy));   // paroi comprimée
+        const hs = G.bolts.map((q) => Math.max(0, q.z * uz + q.y * uy - sp));
+        const Mt = Mres - L.N * (-sp);                          // N > 0 (compression) au centre réduit le moment de soulèvement
+        const S2 = hs.reduce((a, h) => a + h * h, 0);
+        Ft = hs.map((h) => (Mt > 0 && S2 > 0 ? Mt * h / S2 : 0));
+        pivot = { sp, Mt };
+      }
+      R.pivot = pivot;
       R.FtBolt = Ft.map((f) => Math.max(0, f));
       const caps = G.bolts.map((q) => {
         const cp = 2 * PI * mEff, nc = 4 * mEff + 1.25 * G.e;
         const l1 = Math.min(cp, nc, q.trib), l2 = Math.min(nc, q.trib);
         const ts = tstub(l1, l2, mEff, nT, tp, fyp, gam.M0, Ftb);
-        const wall = q.trib * t * fym / gam.M0;                 // bande de paroi tendue
+        const wall = (q.tribW || q.trib) * t * fym / gam.M0;                 // bande de paroi tendue
         return { l1, l2, ts, wall, F: Math.min(ts.F, wall) };
       });
       R.caps = caps;
@@ -281,6 +306,7 @@
       // paroi du tube en compression / section : la barre elle-même est hors champ
       R.Ftb = Ftb;
     }
+    gChk.forEach((c) => R.checks.push(c));
     R.max = R.checks.reduce((a, c) => Math.max(a, c.r), 0);
     R.gov = R.checks.reduce((a, c) => (!a || c.r > a.r ? c : a), null);
     if (R.warnings.some((w) => /incomplète/.test(w))) R.partial = true;

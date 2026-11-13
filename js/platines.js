@@ -279,7 +279,7 @@
     const E = ENV, multi = st.loads.length > 1;
     const pr = partRates(E.rows), rates = Object.fromEntries(Object.entries(pr).map(([k, v]) => [k, v.r]));
     const val = (c, x) => (c.ratioOnly ? '—' : c.perLen ? fmt(x, 0) + ' N/mm' : kN(x));
-    const rows = (g) => E.rows.filter((c) => c.grp === g).map((c) => `<tr${E.gov === c ? ' class="gov"' : ''}><td>${sub(c.label)}${c.note ? `<div class="f" style="font-size:11px">${sub(c.note)}</div>` : ''}</td><td class="f">${c.ref}</td>${multi ? `<td class="f">${esc(c.name)}</td>` : ''}<td class="num">${val(c, c.Ed)}</td><td class="num">${val(c, c.Rd)}</td><td class="num"><span class="ratio">${pct(c.r)}</span></td><td style="width:100px">${bar(c.r)}</td><td>${pill(c.r)}</td></tr>`).join('');
+    const rows = (g) => E.rows.filter((c) => c.grp === g).map((c) => `<tr${E.gov === c ? ' class="gov"' : ''}><td>${sub(c.label)}${c.note ? `<div class="f" style="font-size:11px">${sub(c.note)}</div>` : ''}</td><td class="f">${c.ref}</td>${multi ? `<td class="f">${esc(c.name)}</td>` : ''}<td class="num">${val(c, c.Ed)}</td><td class="num">${val(c, c.Rd)}</td><td class="num"><span class="ratio">${pct(c.geo ? c.rg : c.r)}</span></td><td style="width:100px">${bar(c.r)}</td><td>${pill(c.r)}</td></tr>`).join('');
     const warns = [...new Set(E.runs.flatMap((r) => r.warnings))], infos = [...new Set(E.runs.flatMap((r) => r.info))];
     box.innerHTML = `${warns.map((w) => `<p class="note warn">${sub(w)}</p>`).join('')}${infos.map((w) => `<p class="note">${sub(w)}</p>`).join('')}
       <div class="kpis">
@@ -311,7 +311,7 @@
       const kv = (a, b) => `<div><span>${a}</span><b>${b}</b></div>`;
       const pr = partRates(E.rows), rates = Object.fromEntries(Object.entries(pr).map(([k, v]) => [k, v.r]));
       const val = (c, x) => (c.ratioOnly ? '—' : c.perLen ? fmt(x, 0) + ' N/mm' : kN(x));
-      const chk = E.rows.map((c) => `<tr${E.gov === c ? ' class="gov"' : ''}><td>${{ bolts: 'Boulons', plate: 'Platines', beam: 'Barre', weld: 'Soudures' }[c.grp]}</td><td>${sub(c.label)}</td><td>${c.ref}</td>${multi ? `<td>${esc(c.name)}</td>` : ''}<td class="num">${val(c, c.Ed)}</td><td class="num">${val(c, c.Rd)}</td><td class="num">${pct(c.r)}</td><td>${c.r <= 1 ? '<span class="rp-ok">OK</span>' : '<span class="rp-ko">Non vérifié</span>'}</td></tr>`).join('');
+      const chk = E.rows.map((c) => `<tr${E.gov === c ? ' class="gov"' : ''}><td>${{ bolts: 'Boulons', plate: 'Platines', beam: 'Barre', weld: 'Soudures' }[c.grp]}</td><td>${sub(c.label)}</td><td>${c.ref}</td>${multi ? `<td>${esc(c.name)}</td>` : ''}<td class="num">${val(c, c.Ed)}</td><td class="num">${val(c, c.Rd)}</td><td class="num">${pct(c.geo ? c.rg : c.r)}</td><td>${c.r <= 1 ? '<span class="rp-ok">OK</span>' : '<span class="rp-ko">Non vérifié</span>'}</td></tr>`).join('');
       const infos = [...new Set(E.runs.flatMap((r) => r.warnings.concat(r.info)))];
       const p1 = `<section class="rp-page">${head('p. 1')}
         <div class="rp-title"><h1>${esc(st.name)} — platines d'about, ${esc(S.name)}${total > 1 ? ` (${idx + 1}/${total})` : ''}</h1>

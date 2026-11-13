@@ -33,6 +33,15 @@ prédimensionnement d'une travée) ; les anomalies relevées et corrigées sont 
 - **Platines d'about** (onglet *Platines*) : profils I/H (méthode des composantes § 6.2 : tronçons en T, âme tendue,
   semelle comprimée, M_j,Rd, interaction N–M) et tubes RHS/SHS/CHS (tractions élastiques par boulon, tronçon en T et
   paroi) ; cisaillement + traction, poinçonnement, soudures (méthode simplifiée).
+- **Hypothèses communes aux assemblages** (révision après relecture externe) : f<sub>u</sub> minimal de la norme de
+  produit selon l'épaisseur (NF EN 10025-2 : 470 MPa pour S355 jusqu'à 100 mm) ; trous normaux, surdimensionnés ou
+  oblongs (d<sub>0</sub> EN 1090-2, k<sub>s</sub> et réduction 0,8 / 0,6 de la pression diamétrale) ; pinces, entraxes
+  et encombrements traités comme des **vérifications bloquantes** (comptées dans le taux si violées) ; données nulles
+  ou négatives refusées. Éclisse : partage des plans de cisaillement au prorata des aires des plats (plan le plus
+  chargé déterminant), part d'inertie de l'âme limitée à la partie droite h − 2t<sub>f</sub> − 2r. Plat soudé :
+  V<sub>pl</sub>/1,27 (SCI P358), ductilité 0,5·d (S275) / 0,42·d (S355), pinces de l'âme mesurées aux semelles.
+  Platines : soudures avec la pièce la plus faible, V<sub>y</sub> dans les cordons de semelles, tubes avec pivot
+  sur la paroi comprimée, largeur tributaire au pied du cordon pour les CHS.
 - Vues 3D par tampon de profondeur (`js/r3d.js`) : parties cachées exactes, boulons complets.
 - **Fiche NDC** (PDF, Word) et **projets** (localStorage, export / import .json).
 
