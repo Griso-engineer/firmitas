@@ -20,7 +20,7 @@
     return {
       v: 1, kind: 'platines', name: 'Platines P1', shape: 'I',
       sec: { kind: 'cat', fam: 'HE A', name: 'HE 300 A', prs: { h: 500, b: 250, tw: 10, tf: 20 } },
-      tube: { kind: 'cat', fam: 'SHS (tube carré)', name: 'SHS 200 × 200 × 10', fab: 'hot', h: 200, b: 100, t: 8, d: 219.1 },
+      tube: { kind: 'cat', fam: 'SHS (tube carré)', name: 'SHS 200 × 200 × 10', fab: 'hot', h: 200, b: 100, t: 8, tw: "", d: 219.1 },
       grade: 'S355', plateGrade: 'S355',
       bolt: { d: 22, cls: '10.9', threads: true },
       gam: { M0: 1, M2: 1.25 },
@@ -48,7 +48,12 @@
     const t = s.tube || {};
     if (t.kind === 'custom') {
       if (s.shape === 'chs') { const d = num(t.d), tt = num(t.t); return d > 2 * tt && tt > 0 ? GEO.chs(d, tt, t.fab) : null; }
-      const h = num(t.h), b = num(t.b), tt = num(t.t); return h > 3 * tt && b > 3 * tt && tt > 0 ? GEO.rhs(h, b, tt, t.fab) : null;
+      const h = num(t.h), b = num(t.b), tt = num(t.t), tw = String(t.tw == null ? "" : t.tw).trim() === "" ? tt : num(t.tw);
+      if (!(h > 3 * Math.max(tt, tw) && b > 3 * Math.max(tt, tw) && tt > 0 && tw > 0)) return null;
+      if (Math.abs(tw - tt) < 1e-9) return GEO.rhs(h, b, tt, t.fab);
+      // caisson à parois d'épaisseurs différentes : semelles (parois haute et basse, largeur b) t_f, âmes (parois latérales) t_w
+      const f = (x) => String(x).replace(".", ",");
+      return Object.assign(GEO.rhs(h, b, Math.max(tt, tw), t.fab), { name: "Caisson " + f(h) + " × " + f(b) + " × " + f(tt) + "/" + f(tw), tf: tt, tw, t: Math.min(tt, tw), box: true, A: 2 * b * tt + 2 * (h - 2 * tt) * tw });
     }
     const S = D.findSection(t.fam, t.name, t.fab);
     if (!S) return null;
@@ -163,7 +168,7 @@
       const pos = [['t_p', s.plate.tp], ['a (âme / paroi)', s.plate.aw]].concat(S.type === 'I' ? [['a (semelles)', s.plate.af], ['w', s.Ilay.w], ['b_p', s.Ilay.bp]] : [['m', s.Tlay.m], ['e', s.Tlay.e]]).filter((q) => !(num(q[1]) > 0));
       if (pos.length) { R.valid = false; R.warnings.push('Données invalides (valeurs nulles ou négatives) : ' + pos.map((q) => q[0]).join(', ') + '.'); return R; }
     }
-    const tm = S.type === 'I' ? S.tf : S.t, fym = D.fyOf(s.grade, tm, 'en10025'), fum = fuOf(s.grade, tm);
+    const tm = S.type === "I" ? S.tf : S.box ? Math.max(S.tf, S.tw) : S.t, fym = D.fyOf(s.grade, tm, 'en10025'), fum = fuOf(s.grade, tm);
     const FtRd = 0.9 * bc.fub * As / gam.M2, BpRd = 0.6 * PI * (DM[d] || 1.6 * d) * tp * fup / gam.M2;
     const Ftb = Math.min(FtRd, BpRd);
     const FvRd = (threads ? bc.av * As : 0.6 * Ab) * bc.fub / gam.M2;
@@ -289,7 +294,7 @@
     } else {
       // ---------- tubes ----------
       const G = geomT(s, S); R.geo = G;
-      const t = S.t, aT = aw;
+      const t = S.t, aT = aw, tF = S.type === "RHS" ? S.tf : t, tW = S.type === "RHS" ? S.tw : t;   // parois haute/basse (t_f), latérales (t_w)
       const mEff = G.m - 0.8 * aT * SQ2;
       geoC('g_m', 'Géométrie — distance boulon–cordon m > 0,5·d (clé, écrou)', 0.5 * d, mEff, `m = ${mEff.toFixed(1)} mm > ${(0.5 * d).toFixed(1)} mm`);
       geoC('g_e', 'Pince e ≥ 1,2·d₀', 1.2 * d0, G.e, `${G.e} mm ≥ ${(1.2 * d0).toFixed(1)} mm`);
@@ -301,7 +306,7 @@
         const cp = 2 * PI * mEff, nc = 4 * mEff + 1.25 * G.e;
         const l1 = Math.min(cp, nc, q.trib), l2 = Math.min(nc, q.trib);
         const ts = tstub(l1, l2, mEff, nT, tp, fyp, gam.M0, Ftb);
-        const wall = (q.tribW || q.trib) * t * fym / gam.M0;                 // bande de paroi tendue
+        const wall = (q.tribW || q.trib) * (q.face === "left" || q.face === "right" ? tW : q.face ? tF : t) * fym / gam.M0;                 // bande de paroi tendue
         return { l1, l2, ts, wall, F: Math.min(ts.F, wall) };
       });
       // tractions : platine rigide, contact sous la paroi comprimée (et non rotation autour du centre du groupe,
@@ -315,11 +320,11 @@
         const rc = (S.d - t) / 2, nc = 72;
         for (let k = 0; k < nc; k++) { const a = 2 * PI * (k + 0.5) / nc; cpts.push({ y: rc * Math.cos(a), z: rc * Math.sin(a), k: bcw0 * (2 * PI * rc / nc) / (2 * tp) }); }
       } else {
-        const hc = S.h - t, bc2 = S.b - t, ns = 24;
+        const hc = S.h - tF, bc2 = S.b - tW, ns = 24, bF = tF + 2 * tp, bW = tW + 2 * tp;
         for (let k = 0; k < ns; k++) {
           const u = (k + 0.5) / ns - 0.5;
-          cpts.push({ y: u * bc2, z: hc / 2, k: bcw0 * bc2 / ns / (2 * tp) }, { y: u * bc2, z: -hc / 2, k: bcw0 * bc2 / ns / (2 * tp) });
-          cpts.push({ y: bc2 / 2, z: u * hc, k: bcw0 * hc / ns / (2 * tp) }, { y: -bc2 / 2, z: u * hc, k: bcw0 * hc / ns / (2 * tp) });
+          cpts.push({ y: u * bc2, z: hc / 2, k: bF * bc2 / ns / (2 * tp) }, { y: u * bc2, z: -hc / 2, k: bF * bc2 / ns / (2 * tp) });
+          cpts.push({ y: bc2 / 2, z: u * hc, k: bW * hc / ns / (2 * tp) }, { y: -bc2 / 2, z: u * hc, k: bW * hc / ns / (2 * tp) });
         }
       }
       R.FtBolt = tubeTension(G.bolts, kbT, cpts, L.N, L.My, L.Mz);

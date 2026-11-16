@@ -44,7 +44,8 @@
       return `<polygon points="${pts.map((p) => Y(p[0]).toFixed(1) + ',' + Z(p[1]).toFixed(1)).join(' ')}" ${st2}/>`;
     }
     if (S.type === 'CHS') { const r = S.d / 2; return `<path d="M${Y(-r)},${Z(0)}a${r * k},${r * k} 0 1,0 ${2 * r * k},0a${r * k},${r * k} 0 1,0 ${-2 * r * k},0ZM${Y(-r + S.t)},${Z(0)}a${(r - S.t) * k},${(r - S.t) * k} 0 1,1 ${2 * (r - S.t) * k},0a${(r - S.t) * k},${(r - S.t) * k} 0 1,1 ${-2 * (r - S.t) * k},0Z" fill-rule="evenodd" ${st2}/>`; }
-    return `<path d="M${Y(-S.b / 2)},${Z(S.h / 2)}h${S.b * k}v${S.h * k}h${-S.b * k}ZM${Y(-S.b / 2 + S.t)},${Z(S.h / 2 - S.t)}v${(S.h - 2 * S.t) * k}h${(S.b - 2 * S.t) * k}v${-(S.h - 2 * S.t) * k}Z" fill-rule="evenodd" ${st2}/>`;
+    const tf = S.tf || S.t, tw = S.tw || S.t;
+    return `<path d="M${Y(-S.b / 2)},${Z(S.h / 2)}h${S.b * k}v${S.h * k}h${-S.b * k}ZM${Y(-S.b / 2 + tw)},${Z(S.h / 2 - tf)}v${(S.h - 2 * tf) * k}h${(S.b - 2 * tw) * k}v${-(S.h - 2 * tf) * k}Z" fill-rule="evenodd" ${st2}/>`;
   }
   function plateDims(R) {
     const G = R.geo, S = R.S;
@@ -141,10 +142,11 @@
         boxes.push({ x0: a, x1: b, y0: -S.tw / 2, y1: S.tw / 2, z0: -h2 + S.tf, z1: h2 - S.tf, col: c('m', BEAM) });
       } else if (S.type === 'CHS') prisms.push({ axis: 'x', c: [0, 0, 0], r: S.d / 2, a0: a, a1: b, n: 36, col: c('m', BEAM) });
       else {
-        boxes.push({ x0: a, x1: b, y0: -S.b / 2, y1: S.b / 2, z0: S.h / 2 - S.t, z1: S.h / 2, col: c('m', BEAM) });
-        boxes.push({ x0: a, x1: b, y0: -S.b / 2, y1: S.b / 2, z0: -S.h / 2, z1: -S.h / 2 + S.t, col: c('m', BEAM) });
-        boxes.push({ x0: a, x1: b, y0: -S.b / 2, y1: -S.b / 2 + S.t, z0: -S.h / 2 + S.t, z1: S.h / 2 - S.t, col: c('m', BEAM) });
-        boxes.push({ x0: a, x1: b, y0: S.b / 2 - S.t, y1: S.b / 2, z0: -S.h / 2 + S.t, z1: S.h / 2 - S.t, col: c('m', BEAM) });
+        const tf = S.tf || S.t, tw = S.tw || S.t;   // parois haute/basse (semelles), latérales (âmes)
+        boxes.push({ x0: a, x1: b, y0: -S.b / 2, y1: S.b / 2, z0: S.h / 2 - tf, z1: S.h / 2, col: c('m', BEAM) });
+        boxes.push({ x0: a, x1: b, y0: -S.b / 2, y1: S.b / 2, z0: -S.h / 2, z1: -S.h / 2 + tf, col: c('m', BEAM) });
+        boxes.push({ x0: a, x1: b, y0: -S.b / 2, y1: -S.b / 2 + tw, z0: -S.h / 2 + tf, z1: S.h / 2 - tf, col: c('m', BEAM) });
+        boxes.push({ x0: a, x1: b, y0: S.b / 2 - tw, y1: S.b / 2, z0: -S.h / 2 + tf, z1: S.h / 2 - tf, col: c('m', BEAM) });
       }
     });
     [[-tp, 0], [0, tp]].forEach(([a, b]) => {
@@ -174,7 +176,7 @@
     const secFields = isI
       ? (st.sec.kind === 'prs' ? field('h', inp('sec.prs.h'), 'mm') + field('b', inp('sec.prs.b'), 'mm') + field('t<sub>w</sub>', inp('sec.prs.tw'), 'mm') + field('t<sub>f</sub>', inp('sec.prs.tf'), 'mm')
         : field('Famille', sel('sec.fam', iFams(), { rr: true })) + field('Profil', sel('sec.name', (D.CATALOG[st.sec.fam] || []).map((x) => [x.name, x.name]))))
-      : (st.tube.kind === 'custom' ? (st.shape === 'chs' ? field('d', inp('tube.d'), 'mm') : field('h', inp('tube.h'), 'mm') + field('b', inp('tube.b'), 'mm')) + field('t', inp('tube.t'), 'mm')
+      : (st.tube.kind === 'custom' ? (st.shape === 'chs' ? field('d', inp('tube.d'), 'mm') : field("h", inp("tube.h"), "mm") + field("b", inp("tube.b"), "mm") + field("t<sub>f</sub> semelles", inp("tube.t"), "mm", "Parois haute et basse (largeur b)") + field("t<sub>w</sub> âmes", inp("tube.tw", { ph: "= tf" }), "mm", "Parois latérales (hauteur h) ; vide = t<sub>f</sub>")) + (st.shape === "chs" ? field("t", inp("tube.t"), "mm") : "")
         : field('Famille', sel('tube.fam', tubeFams, { rr: true })) + field('Profil', sel('tube.name', (D.CATALOG[st.tube.fam] || []).map((x) => [x.name, x.name])))) + field('Fabrication', sel('tube.fab', [['hot', 'Fini à chaud (EN 10210)'], ['cold', 'Formé à froid (EN 10219)']]));
     const lay = isI ? `<div class="fields">
         <div style="grid-column:1/-1;display:flex;gap:18px;flex-wrap:wrap">${chk('Ilay.extTop', 'Rangée débordante en haut', true)} ${chk('Ilay.extBot', 'Rangée débordante en bas', true)}</div>
@@ -251,7 +253,7 @@
     if (!R.valid) { ['#eGeo', '#eFlow', '#eResults'].forEach((x) => { const e = $(x); if (e) e.innerHTML = R.warnings.map((w) => `<p class="note warn">${sub(w)}</p>`).join(''); }); return; }
     const S = R.S;
     const ei = $('#eInfo');
-    if (ei) ei.innerHTML = `<b style="color:var(--ink)">${esc(S.name)}</b> — ${S.type === 'CHS' ? `d = ${fmtG(S.d, 1)}, t = ${fmtG(S.t, 1)}` : S.type === 'RHS' ? `h = ${fmtG(S.h, 1)}, b = ${fmtG(S.b, 1)}, t = ${fmtG(S.t, 1)}` : `h = ${fmtG(S.h, 1)}, b = ${fmtG(S.b, 1)}, t<sub>w</sub> = ${fmtG(S.tw, 1)}, t<sub>f</sub> = ${fmtG(S.tf, 1)}`} mm<br>
+    if (ei) ei.innerHTML = `<b style="color:var(--ink)">${esc(S.name)}</b> — ${S.type === 'CHS' ? `d = ${fmtG(S.d, 1)}, t = ${fmtG(S.t, 1)}` : S.type === "RHS" ? (S.box ? `h = ${fmtG(S.h, 1)}, b = ${fmtG(S.b, 1)}, t<sub>f</sub> = ${fmtG(S.tf, 1)} (semelles), t<sub>w</sub> = ${fmtG(S.tw, 1)} (âmes)` : `h = ${fmtG(S.h, 1)}, b = ${fmtG(S.b, 1)}, t = ${fmtG(S.t, 1)}`) : `h = ${fmtG(S.h, 1)}, b = ${fmtG(S.b, 1)}, t<sub>w</sub> = ${fmtG(S.tw, 1)}, t<sub>f</sub> = ${fmtG(S.tf, 1)}`} mm<br>
       f<sub>y</sub>/f<sub>u</sub> barre : ${R.mat.fym}/${R.mat.fum} MPa · platines : ${R.mat.fyp}/${R.mat.fup} MPa<br>
       M${R.bolt.d} ${R.bolt.cls} : F<sub>t,Rd</sub> = ${kN(R.bolt.FtRd)} kN, B<sub>p,Rd</sub> = ${kN(R.bolt.BpRd)} kN, F<sub>v,Rd</sub> = ${kN(R.bolt.FvRd)} kN`;
     const geo = $('#eGeo');

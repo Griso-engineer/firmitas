@@ -23,7 +23,7 @@
 <script src="js/xl-ref.js?v=436b5782"></script>
 <script src="js/eclisse-calc.js?v=d8924dcd"></script>
 <script src="js/platsoude-calc.js?v=994c2e9c"></script>
-<script src="js/platines-calc.js?v=995ccb04"></script>
+<script src="js/platines-calc.js?v=c3630ea9"></script>
 <script src="js/soudure-calc.js?v=8961c627"></script>
 <script src="js/boulons-calc.js?v=60d8f97b"></script>
 <script>
@@ -269,7 +269,17 @@
     const ft2 = Math.max(...er3.FtBolt);
     eps.Tlay.sides = 'lr'; eps.loads = [{ name: 'Mz', N: 0, Vy: 0, Vz: 0, Mx: 0, My: 0, Mz: 30 }]; er3 = EPC.compute(eps);
     check('SHS, boulons sur 2 faces gauche et droite, M_z = 30 kN·m : même traction que haut et bas sous M_y [kN]', Math.max(...er3.FtBolt) / 1e3, ft2 / 1e3, 1e-3);
-    check('… 4 boulons, tous en y = ±(b/2 + m) ; platine b_p = b + 2(m + e), h_p = h + 2·débord', er3.geo.bolts.every((q) => Math.abs(Math.abs(q.y) - 140) < 1e-9) && er3.geo.bp === 350 && er3.geo.hp === 230 ? er3.geo.bolts.length : 0, 4);
+    {
+      // caisson sur mesure : semelles (parois haute et basse) t_f = 10, âmes (parois latérales) t_w = 6
+      const sb = EPC.defaultState(); sb.shape = 'rhs'; sb.tube = { kind: 'custom', fab: 'hot', h: 200, b: 200, t: 10, tw: 6 }; sb.Tlay.sides = 'lr';
+      sb.loads = [{ name: 'Mz', N: 0, Vy: 0, Vz: 0, Mx: 0, My: 0, Mz: 30 }];
+      const rb = EPC.compute(sb), Sb = EPC.memberOf(sb);
+      check('Caisson t_f = 10 / t_w = 6 : A = 2·b·t_f + 2·(h − 2t_f)·t_w [mm²]', Sb.A, 2 * 200 * 10 + 2 * 180 * 6);
+      check('… boulons sur les âmes : bande de paroi tendue = longueur tributaire·t_w·f_y [kN]', rb.caps[0].wall / 1e3, 100 * 6 * 355 / 1e3);
+      sb.tube.tw = ''; const Su = EPC.memberOf(sb);
+      check('… t_w vide : tube uniforme t = t_f (aire du RHS 200 × 200 × 10)', Su.A, G.rhs(200, 200, 10, 'hot').A);
+    }
+    check('… 4 boulons, tous en y = ±(b/2 + m) ; platine b_p = b + 2(m + e), h_p = h + 2·débord',er3.geo.bolts.every((q) => Math.abs(Math.abs(q.y) - 140) < 1e-9) && er3.geo.bp === 350 && er3.geo.hp === 230 ? er3.geo.bolts.length : 0, 4);
   }
   check('Coefficient α (fig. 6.11) : λ1 = 0,455, λ2 = 0,297 → α ≈ 6,65 (exemple Dlubal KB 001497)', EPC.alphaOf(62.6 / 137.6, 40.8 / 137.6), 6.65, 0.02);
   eps = EPC.defaultState(); eps.Ilay.nInBot = 2; er3 = EPC.compute(eps);
