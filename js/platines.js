@@ -239,8 +239,51 @@
       <div id="eFlow"></div>
       ${blockHead('06', 'Vérifications', 'NF EN 1993-1-8 § 3 (boulons) et § 6.2 (tronçons en T, composantes) ; soudures par la méthode simplifiée § 4.5.3.3.')}
       <div id="eResults"></div>
+      ${blockHead('07', 'Rigidité et résistance', "Raideur rotationnelle initiale par la méthode des composantes (EN 1993-1-8 § 6.3, tableau 6.10 : éclissage par platines d'about) et classification (§ 5.2.2.5) : l'about-about peut-il être considéré comme un encastrement (continuité) ?")}
+      ${window.FirmitasRigUI.inputs(inp, sel, field, field('Rondelles par boulon', sel('rig.washers', [['2', '2 (tête et écrou)'], ['1', '1 (sous l\'écrou)'], ['0', 'Aucune']]), '', 'Pour L<sub>b</sub> du boulon (k<sub>10</sub>)'))}
+      <div id="eRig"></div>
     </div>`;
     refresh();
+  }
+
+  // ======================================================================
+  //  RIGIDITÉ (§ 6.3)
+  // ======================================================================
+  const kr = (x, d = 2) => (Number.isFinite(x) ? fmt(x, d) : '∞');
+  // tableau des composantes par rangée, puis composantes globales ; part de la souplesse en %
+  function rigTable(g, print) {
+    const pc = (x) => fmt(100 * x, 1).replace(/,0$/, '');
+    const head = `<tr><th>Rangée tendue</th><th class="num">h<sub>r</sub> [mm]</th><th class="num">l<sub>eff</sub> [mm]</th><th class="num">m [mm]</th><th class="num">k<sub>5</sub> (1 platine) [mm]</th><th class="num">k<sub>10</sub> [mm]</th><th class="num">k<sub>eff,r</sub> [mm]</th><th class="num">Souplesse 2 × k<sub>5</sub></th><th class="num">Souplesse k<sub>10</sub></th></tr>`;
+    const rows = g.rows.map((r) => `<tr><td>${esc(r.label)}</td><td class="num">${fmt(r.h, 1)}</td><td class="num">${fmt(r.l, 1)}</td><td class="num">${fmt(r.m, 1)}</td><td class="num">${kr(r.k5, 3)}</td><td class="num">${kr(r.k10, 3)}</td><td class="num">${kr(r.keff, 3)}</td><td class="num">${pc(r.sh5)} %</td><td class="num">${pc(r.sh10)} %</td></tr>`).join('');
+    const glob = `<tr><td>k<sub>1</sub> panneau d'âme, k<sub>2</sub> âme comprimée, k<sub>3</sub> âme tendue, k<sub>4</sub> semelle de poteau</td><td colspan="8">∞ — sans objet (about-about, pas de poteau ; tableau 6.10)</td></tr>
+      <tr><td><b>Bras de levier équivalent z<sub>eq</sub></b> (6.31)</td><td class="num"><b>${fmt(g.z, 1)}</b></td><td colspan="7">mm</td></tr>
+      <tr><td><b>Raideur équivalente k<sub>eq</sub></b> (6.29)</td><td class="num"><b>${kr(g.keq, 3)}</b></td><td colspan="7">mm</td></tr>`;
+    const tbl = `<table class="${print ? '' : 'tbl compact'}"${print ? '' : ' style="max-width:1100px"'}><thead>${head}</thead><tbody>${rows}${glob}</tbody></table>`;
+    return print ? tbl : `<div class="tbl-wrap" style="margin-top:14px">${tbl}</div>`;
+  }
+  function rigNote(g) {
+    const B = g.Lbolt;
+    return `S<sub>j,ini</sub> = E·z<sub>eq</sub>²·k<sub>eq</sub> (6.27, μ = 1 ; k<sub>1</sub> = k<sub>2</sub> = ∞) avec, par rangée r de 2 boulons (tableau 6.11) : k<sub>5</sub> = 0,9·l<sub>eff</sub>·t<sub>p</sub>³/m³ pour chaque platine (deux platines en série), l<sub>eff</sub> = plus petite longueur efficace (rangée seule ou en groupe) retenue pour la résistance (§ 6.2.6.5) ; k<sub>10</sub> = 1,6·A<sub>s</sub>/L<sub>b</sub>, L<sub>b</sub> = 2·t<sub>p</sub> + ${B.nw}·${fmtG(B.tw, 1)} (rondelles) + (${fmtG(B.k, 1)} + ${fmtG(B.m, 1)})/2 (½ tête + ½ écrou) = ${fmt(B.Lb, 1)} mm, identique en boulons précontraints ou non ; k<sub>eff,r</sub> = 1/(2/k<sub>5</sub> + 1/k<sub>10</sub>). h<sub>r</sub> mesuré depuis le centre de compression (mi-épaisseur de la ${g.approx ? 'paroi' : 'semelle'} comprimée). z<sub>eq</sub> = Σk<sub>eff,r</sub>·h<sub>r</sub>²/Σk<sub>eff,r</sub>·h<sub>r</sub>, k<sub>eq</sub> = Σk<sub>eff,r</sub>·h<sub>r</sub>/z<sub>eq</sub> (§ 6.3.3.1). Raideur sécante (6.28) : S<sub>j</sub> = S<sub>j,ini</sub>/μ avec μ = (1,5·M<sub>j,Ed</sub>/M<sub>j,Rd</sub>)<sup>2,7</sup> si M<sub>j,Ed</sub> &gt; 2/3·M<sub>j,Rd</sub> ; analyse globale simplifiée (5.1.2) : S<sub>j,ini</sub>/η avec η = ${g.eta} (tableau 5.2, éclissage à platines). Classification 5.2.2.5 pour une poutre de portée L<sub>b</sub> = ${fmt(g.Lb / 1000, 2)} m. Part de la souplesse : contribution de chaque composante à 1/k<sub>eq</sub>, pondérée par la part k<sub>eff,r</sub>·h<sub>r</sub> de la rangée.${g.approx ? ' <b>Tubes : approximation hors EN 1993-1-8 § 6.3</b> (qui ne couvre que les profils en I/H) — chaque boulon est un demi-tronçon en T (0,45·l<sub>eff</sub>·t<sub>p</sub>³/m³, l<sub>eff</sub> du tronçon en T du boulon) en série avec 0,8·A<sub>s</sub>/L<sub>b</sub>, boulons de même bras de levier regroupés ; ordre de grandeur à confirmer.' : ''}`;
+  }
+  function renderRig() {
+    const box = $('#eRig'); if (!box) return;
+    const g = ENV && ENV.rig;
+    if (!g) { box.innerHTML = '<p class="note">Rigidité non calculée : aucune rangée tendue sous M<sub>y</sub> ou données invalides.</p>'; return; }
+    const full = g.MjRd != null && g.Mpl != null && g.MjRd >= g.Mpl;
+    const eq = g.leq / 1000;
+    box.innerHTML = `<div class="kpis k3">
+        ${window.FirmitasRigUI.cards(g, g.approx ? ' · approximation tubes' : '')}
+        <div class="kpi ${full ? 'hero' : ''}"><b>Résistance M<sub>j,Rd</sub></b><span>${g.MjRd != null ? fmt(g.MjRd / 1e6, 0) : '—'}</span><small>kN·m pour M<sub>y</sub> seul${g.Mpl ? ` · M<sub>pl,Rd</sub> barre = ${fmt(g.Mpl / 1e6, 0)} kN·m → ${full ? 'pleine résistance' : 'résistance partielle'}` : ''}</small></div>
+      </div>
+      ${window.FirmitasRigUI.gauge(g, g.Sjs)}
+      <div class="muted" style="font-size:12.5px;line-height:1.7;margin-top:10px">
+        Torseur retenu : <b style="color:var(--ink)">${esc(g.loadName)}</b> (plus grand |M<sub>y</sub>|), rangées ${g.side === 'bot' ? 'inférieures' : 'supérieures'} tendues · M<sub>j,Ed</sub> = ${fmt(g.MjEd / 1e6, 1)} kN·m${g.MjRd ? ` = ${fmt(g.MjEd / g.MjRd * 100, 0)} % de M<sub>j,Rd</sub>` : ''}<br>
+        Raideur sécante S<sub>j</sub> = S<sub>j,ini</sub>/μ = <b style="color:var(--ink)">${fmt(g.Sjs / 1e9, 1)} MN·m/rad</b> (μ = ${fmt(g.mu, 2)}${g.mu === 1 ? ', M<sub>j,Ed</sub> ≤ 2/3·M<sub>j,Rd</sub>' : ''}) · analyse globale simplifiée : S<sub>j,ini</sub>/η = ${fmt(g.Sj / g.eta / 1e9, 1)} MN·m/rad (η = ${g.eta})<br>
+        L'assemblage tourne autant que <b style="color:var(--ink)">${fmt(eq, 2)} m</b> de barre (ℓ<sub>éq</sub> = E·I<sub>b</sub>/S<sub>j,ini</sub>) · E·I<sub>b</sub> = ${fmt(g.EI / 1e12, 2)} MN·m²<br>
+        Capacité de rotation (§ 6.4.2, information) : t<sub>p</sub> = ${fmtG(g.rot.tp, 1)} mm ${g.rot.ok ? '≤' : '>'} 0,36·d·√(f<sub>ub</sub>/f<sub>y</sub>) = ${fmt(g.rot.lim, 1)} mm → ${g.rot.ok ? 'la platine est le maillon ductile, compatible avec une analyse plastique' : 'capacité de rotation non démontrée par ce critère'}
+      </div>
+      ${rigTable(g)}
+      <p class="note">${rigNote(g)}</p>`;
   }
 
   function refresh() {
@@ -250,7 +293,7 @@
     const dd = $('#eDirty'); if (dd) dd.textContent = dirty ? 'modifié · non enregistré' : '';
     const cn = $('#eCrumb'); if (cn) cn.textContent = st.name || 'Sans nom';
     ENV.perLoad.forEach((m, i) => { const c = $('#eRate' + i); if (c) c.innerHTML = `<b style="color:${m > 1 ? 'var(--c-red)' : 'inherit'}">${pct(m)}</b>${i === ENV.govIdx ? ' ◂' : ''}`; });
-    if (!R.valid) { ['#eGeo', '#eFlow', '#eResults'].forEach((x) => { const e = $(x); if (e) e.innerHTML = R.warnings.map((w) => `<p class="note warn">${sub(w)}</p>`).join(''); }); return; }
+    if (!R.valid) { ['#eGeo', '#eFlow', '#eResults', '#eRig'].forEach((x) => { const e = $(x); if (e) e.innerHTML = R.warnings.map((w) => `<p class="note warn">${sub(w)}</p>`).join(''); }); return; }
     const S = R.S;
     const ei = $('#eInfo');
     if (ei) ei.innerHTML = `<b style="color:var(--ink)">${esc(S.name)}</b> — ${S.type === 'CHS' ? `d = ${fmtG(S.d, 1)}, t = ${fmtG(S.t, 1)}` : S.type === "RHS" ? (S.box ? `h = ${fmtG(S.h, 1)}, b = ${fmtG(S.b, 1)}, t<sub>f</sub> = ${fmtG(S.tf, 1)} (semelles), t<sub>w</sub> = ${fmtG(S.tw, 1)} (âmes)` : `h = ${fmtG(S.h, 1)}, b = ${fmtG(S.b, 1)}, t = ${fmtG(S.t, 1)}`) : `h = ${fmtG(S.h, 1)}, b = ${fmtG(S.b, 1)}, t<sub>w</sub> = ${fmtG(S.tw, 1)}, t<sub>f</sub> = ${fmtG(S.tf, 1)}`} mm<br>
@@ -262,6 +305,7 @@
     if (t3) t3.innerHTML = S.type === 'I' ? DR.torseur3D(R, curLoad()) : `<div style="padding:12px;font-size:13px">${front(R)}<p class="note">Repère : y horizontal, z vertical, x le long de la barre. N &gt; 0 : compression ; M<sub>y</sub> &gt; 0 comprime le haut (z &gt; 0) ; M<sub>z</sub> &gt; 0 comprime le côté +y.</p></div>`;
     renderFlow();
     renderResults();
+    renderRig();
   }
 
   function renderFlow() {
@@ -300,7 +344,7 @@
         <div><div class="sub-title" style="margin-top:4px">Taux par pièce</div><div class="rate-legend" style="grid-template-columns:1fr">
           ${PARTS.map(([id]) => `<div><i style="background:${DR.rateCol(pr[id].r)}"></i><span>${pr[id].label}<br><small class="muted">${sub((pr[id].gov.label || '—').replace(/\s*\(.*$/, ''))}</small></span><b>${pct(pr[id].r)}</b></div>`).join('')}
         </div></div></div>
-      <p class="note">* Critères traités : tronçons en T des platines (3 modes, effet de levier), boulons (traction, poinçonnement, cisaillement, interaction), ${R.S.type === 'I' ? 'âme tendue, semelle comprimée, moment résistant M_j,Rd et interaction N–M (6.23)' : 'bande de paroi tendue'}, pression diamétrale, soudures (méthode simplifiée). Hors champ : résistance de la barre hors du joint, raideur de l'assemblage${R.S.type === 'I' ? ', M_z et M_x' : ''}.</p>
+      <p class="note">* Critères traités : tronçons en T des platines (3 modes, effet de levier), boulons (traction, poinçonnement, cisaillement, interaction), ${R.S.type === 'I' ? 'âme tendue, semelle comprimée, moment résistant M_j,Rd et interaction N–M (6.23)' : 'bande de paroi tendue'}, pression diamétrale, soudures (méthode simplifiée). Hors champ : résistance de la barre hors du joint${R.S.type === 'I' ? ', M_z et M_x' : ''}.</p>
       ${[['bolts', 'Boulons'], ['plate', 'Platines'], ['beam', 'Barre'], ['weld', 'Soudures']].filter(([g]) => E.rows.some((c) => c.grp === g)).map(([g, t]) => `<div class="sub-title" style="margin-top:26px">${t}</div>
         <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Critère</th><th>Réf. EC3</th>${multi ? '<th>Torseur</th>' : ''}<th class="num">E<sub>d</sub></th><th class="num">R<sub>d</sub></th><th class="num">Taux</th><th></th><th></th></tr></thead><tbody>${rows(g)}</tbody></table></div>`).join('')}`;
   }
@@ -344,7 +388,20 @@
         <table style="border:0"><tr><td style="border:0;padding:0;width:58%">${iso(Rg, { W: 500, H: 320, colorOf: (id) => DR.rateCol(rates[id]), title: 'Taux d\'utilisation par pièce', sub: 'enveloppe des torseurs' })}</td><td style="border:0;padding:0 0 0 6pt"><table><tbody>${PARTS.map(([id]) => `<tr><td><span style="display:inline-block;width:8pt;height:8pt;background:${DR.rateCol(pr[id].r)};border:.5pt solid #111;margin-right:4pt"></span>${pr[id].label}</td><td class="num">${pct(pr[id].r)}</td></tr>`).join('')}</tbody></table></td></tr></table>
         <div class="rp-concl"><span>Conclusion — platines d'about ${esc(S.name)}</span><b class="${E.max <= 1 && !E.partial ? 'rp-ok' : 'rp-ko'}">${E.partial ? 'Vérification incomplète' : E.max <= 1 ? 'Vérifiées' : 'Non vérifiées'} — taux max. ${pct(E.max)}</b></div>
       </section>`;
-      return p1 + p2;
+      const g = E.rig;
+      const p3 = g ? `<section class="rp-page">${head('p. 3')}
+        ${H2('Rigidité et résistance de l\x27assemblage')}
+        <div class="rp-kv">
+          ${kv('S<sub>j,ini</sub> (6.27, tableaux 6.10 et 6.11)', `${fmt(g.Sj / 1e9, 1)} MN·m/rad${g.approx ? ' (approximation tubes)' : ''}`)}${kv('Classification (5.2.2.5)', `<b>${g.cls}</b>`)}
+          ${kv(`Limite rigide k<sub>b</sub>·E·I<sub>b</sub>/L<sub>b</sub> (k<sub>b</sub> = ${g.kb}, L<sub>b</sub> = ${fmt(g.Lb / 1000, 2)} m)`, `${fmt(g.rigidLim / 1e9, 1)} MN·m/rad`)}${kv('Limite articulée 0,5·E·I<sub>b</sub>/L<sub>b</sub>', `${fmt(g.pinLim / 1e9, 1)} MN·m/rad`)}
+          ${kv('M<sub>j,Rd</sub> (M<sub>y</sub> seul)', g.MjRd != null ? `${fmt(g.MjRd / 1e6, 0)} kN·m` : '—')}${kv('M<sub>pl,Rd</sub> de la barre', g.Mpl ? `${fmt(g.Mpl / 1e6, 0)} kN·m` : '—')}
+          ${kv(`S<sub>j</sub> sécante (6.28), ${esc(g.loadName)}`, `${fmt(g.Sjs / 1e9, 1)} MN·m/rad (μ = ${fmt(g.mu, 2)})`)}${kv('S<sub>j,ini</sub>/η (η = 3, tableau 5.2)', `${fmt(g.Sj / g.eta / 1e9, 1)} MN·m/rad`)}
+          ${kv('Longueur de barre équivalente E·I<sub>b</sub>/S<sub>j,ini</sub>', `${fmt(g.leq / 1000, 2)} m`)}${kv('Capacité de rotation (6.4.2)', `t<sub>p</sub> = ${fmtG(g.rot.tp, 1)} ${g.rot.ok ? '≤' : '>'} ${fmt(g.rot.lim, 1)} mm`)}
+        </div>
+        <div style="margin-top:6pt;font-size:7.6pt">${rigTable(g, true)}</div>
+        <p style="font-size:7.4pt;color:#555;margin-top:5pt">${rigNote(g)}</p>
+      </section>` : '';
+      return p1 + p2 + p3;
     } finally { st = keep; }
   }
 

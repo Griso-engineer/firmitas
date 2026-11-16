@@ -303,10 +303,7 @@
       <div id="sResults"></div>
 
       ${blockHead('07', 'Rigidité et résistance', "Raideur rotationnelle initiale par la méthode des composantes (EN 1993-1-8 § 6.3) et classification (§ 5.2.2) : l'éclissage peut-il être considéré comme un encastrement (continuité) ?")}
-      <div class="fields">
-        ${field('Portée de la poutre L<sub>b</sub>', inp('rig.Lb'), 'm', 'Pour la limite k<sub>b</sub>·E·I<sub>b</sub>/L<sub>b</sub>')}
-        ${field('Ossature', sel('rig.frame', [['braced', 'Contreventée — k_b = 8'], ['unbraced', 'Non contreventée — k_b = 25']]))}
-      </div>
+      ${window.FirmitasRigUI.inputs(inp, sel, field)}
       <div id="sRig"></div>
     </div>`;
     refresh();
@@ -338,21 +335,12 @@
   function renderRig() {
     const box = $('#sRig'); if (!box || !ENV || !ENV.rig) return;
     const g = ENV.rig, E = ENV;
-    const Sj = g.Sj / 1e9, rl = g.rigidLim / 1e9, pl = g.pinLim / 1e9;
-    const pos = (v) => Math.max(0, Math.min(100, (Math.log10(v) - Math.log10(pl / 4)) / (Math.log10(rl * 4) - Math.log10(pl / 4)) * 100));
-    const scale = `<div style="position:relative;height:46px;margin:18px 0 6px;max-width:760px">
-      <div style="position:absolute;left:0;right:0;top:16px;height:10px;background:linear-gradient(90deg,#f3d6d4 0%,#f3d6d4 ${pos(pl)}%,#f6ead2 ${pos(pl)}%,#f6ead2 ${pos(rl)}%,#d8ecdf ${pos(rl)}%,#d8ecdf 100%)"></div>
-      <div style="position:absolute;left:${pos(pl)}%;top:8px;height:26px;border-left:1px solid var(--ink)"></div><div style="position:absolute;left:${pos(pl)}%;top:36px;font-size:11px;transform:translateX(-50%)">0,5·EI/L</div>
-      <div style="position:absolute;left:${pos(rl)}%;top:8px;height:26px;border-left:1px solid var(--ink)"></div><div style="position:absolute;left:${pos(rl)}%;top:36px;font-size:11px;transform:translateX(-50%)">${g.kb}·EI/L</div>
-      <div style="position:absolute;left:${pos(Sj)}%;top:0;transform:translateX(-50%);font-size:11px;font-weight:800">▼ S<sub>j,ini</sub></div>
-      <div style="position:absolute;left:2px;top:-14px;font-size:11px;color:var(--muted)">articulé</div><div style="position:absolute;left:50%;top:-14px;font-size:11px;color:var(--muted);transform:translateX(-50%)">semi-rigide</div><div style="position:absolute;right:2px;top:-14px;font-size:11px;color:var(--muted)">rigide</div>
-    </div>`;
+    const scale = window.FirmitasRigUI.gauge(g);
     const P = g.parts;
     const kr = (x) => (Number.isFinite(x) ? fmt(x, 2) : '∞');
     const full = E.MjRd != null && E.MjRd >= E.Mpl;
     box.innerHTML = `<div class="kpis k3">
-        <div class="kpi ${g.cls === 'rigide' ? 'hero' : ''}"><b>Rigidité initiale</b><span>${fmt(Sj, 1)}</span><small>MN·m/rad — assemblage <b>${g.cls}</b> (5.2.2.5)</small></div>
-        <div class="kpi"><b>Limite « rigide »</b><span>${fmt(rl, 1)}</span><small>k<sub>b</sub>·E·I<sub>b</sub>/L<sub>b</sub>, k<sub>b</sub> = ${g.kb} (${g.kb === 8 ? 'ossature contreventée' : 'non contreventée'})</small></div>
+        ${window.FirmitasRigUI.cards(g)}
         <div class="kpi ${full ? 'hero' : ''}"><b>Résistance M<sub>j,Rd</sub></b><span>${E.MjRd != null ? fmt(E.MjRd, 0) : '—'}</span><small>kN·m pour M<sub>y</sub> seul · M<sub>pl,Rd</sub> poutre = ${fmt(E.Mpl, 0)} kN·m → ${full ? 'pleine résistance' : 'résistance partielle'}${E.govM ? ' · gouverné par : ' + sub(E.govM.label.replace(/\s*\(.*$/, '')) : ''}</small></div>
       </div>
       ${scale}

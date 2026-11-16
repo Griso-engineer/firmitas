@@ -151,6 +151,13 @@
     return { ab, k1, Fb: k1 * ab * fu * d * t / gM2 };
   }
 
+  // ---------- classification d'un assemblage par sa rigidité (NF EN 1993-1-8 § 5.2.2.5), commune aux onglets ----------
+  // rig = { Lb [m], frame : 'braced' (k_b = 8) | 'unbraced' (k_b = 25) } ; EI en N·mm², S_j en N·mm/rad
+  function classifyJoint(Sj, EI, rig) {
+    const rg = rig || {}, Lb = num(rg.Lb, 8) * 1000, kb = rg.frame === "unbraced" ? 25 : 8, EIL = EI / Lb;
+    const cls = Sj >= kb * EIL ? "rigide" : Sj <= 0.5 * EIL ? "articulé" : "semi-rigide";
+    return { Lb, kb, EIL, rigidLim: kb * EIL, pinLim: 0.5 * EIL, cls, leq: EI / Sj };
+  }
   // ---------- raideur rotationnelle initiale (NF EN 1993-1-8 § 6.3, tableau 6.11) ----------
   // Ressorts en série par semelle : boulons en cisaillement (k11), pression diamétrale sur chaque pli (k12),
   // des deux côtés du joint, et plats tendus entre les premières files (A/L). Âme négligée (sécuritaire).
@@ -179,11 +186,7 @@
       parts[k] = { k11, kf, kp, kBolt, kSide, kPlate, Lpl, keq: 1 / flex, nb };
     });
     const Sj = E * z * z / (1 / parts.top.keq + 1 / parts.bot.keq);
-    const rg = s.rig || {};
-    const Lb = num(rg.Lb, 8) * 1000, kb = rg.frame === 'unbraced' ? 25 : 8;
-    const EIL = E * S.Iy / Lb;
-    const cls = Sj >= kb * EIL ? 'rigide' : Sj <= 0.5 * EIL ? 'articulé' : 'semi-rigide';
-    return { E, z, parts, Sj, Lb, kb, EIL, rigidLim: kb * EIL, pinLim: 0.5 * EIL, cls, preload };
+    return Object.assign({ E, z, parts, Sj, preload }, classifyJoint(Sj, E * S.Iy, s.rig));
   }
 
   // ======================================================================
@@ -500,5 +503,5 @@
     } catch (e) { return null; }
   }
 
-  window.FirmitasSpliceCalc = { ciOf, ciAuto, HOLES, d0Hole, groupForces, bearing, compute, computeEnv, propose, defaultState, upgrade, summary, BOLTS, CLASSES, MU, KS, COMPS, GROUPS, d0Of, fuOf, num, beamOf };
+  window.FirmitasSpliceCalc = { classifyJoint, ciOf, ciAuto, HOLES, d0Hole, groupForces, bearing, compute, computeEnv, propose, defaultState, upgrade, summary, BOLTS, CLASSES, MU, KS, COMPS, GROUPS, d0Of, fuOf, num, beamOf };
 })();

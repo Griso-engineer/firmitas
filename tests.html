@@ -21,9 +21,9 @@
 <script src="js/ec3.js?v=7de645d2"></script>
 <script src="js/store.js?v=98792fe1"></script>
 <script src="js/xl-ref.js?v=436b5782"></script>
-<script src="js/eclisse-calc.js?v=d8924dcd"></script>
+<script src="js/eclisse-calc.js?v=5ad40880"></script>
 <script src="js/platsoude-calc.js?v=994c2e9c"></script>
-<script src="js/platines-calc.js?v=c3630ea9"></script>
+<script src="js/platines-calc.js?v=3f39dd65"></script>
 <script src="js/soudure-calc.js?v=8961c627"></script>
 <script src="js/boulons-calc.js?v=60d8f97b"></script>
 <script>
@@ -282,6 +282,49 @@
     check('… 4 boulons, tous en y = ±(b/2 + m) ; platine b_p = b + 2(m + e), h_p = h + 2·débord',er3.geo.bolts.every((q) => Math.abs(Math.abs(q.y) - 140) < 1e-9) && er3.geo.bp === 350 && er3.geo.hp === 230 ? er3.geo.bolts.length : 0, 4);
   }
   check('Coefficient α (fig. 6.11) : λ1 = 0,455, λ2 = 0,297 → α ≈ 6,65 (exemple Dlubal KB 001497)', EPC.alphaOf(62.6 / 137.6, 40.8 / 137.6), 6.65, 0.02);
+  {
+    // ------------------------------------------------------------------
+    // Rigidité § 6.3 — about-about HE 300 A, platines 25 mm S355, M22 10.9, rangées débordantes + 1 intérieure de chaque côté,
+    // M_y = 160 kN·m (rangées inférieures tendues). Calcul manuel indépendant (tableaux 6.6, 6.10, 6.11 ; § 6.3.3.1).
+    // ------------------------------------------------------------------
+    const sr = EPC.defaultState(); sr.loads = [{ name: 'M', N: 0, Vy: 0, Vz: 0, Mx: 0, My: 160, Mz: 0 }];
+    const Er = EPC.computeEnv(sr), g = Er.rig, E0 = 210000, tp = 25, As = 303, SQ = Math.SQRT2;
+    const Lb = 2 * 25 + 2 * 3 + (14 + 19.4) / 2, k10 = 1.6 * As / Lb;                 // ISO 4014 / 4032 / 7089, M22
+    const m1 = 45 - 0.8 * 8 * SQ, m2 = (150 - 8.5) / 2 - 0.8 * 5 * SQ;                 // m_x débordante ; m âme (pied de cordon)
+    const l1 = Math.min(2 * Math.PI * m1, Math.PI * m1 + 150, Math.PI * m1 + 150, 4 * m1 + 1.25 * 40, 75 + 2 * m1 + 0.625 * 40, 0.5 * 300, 75 + 2 * m1 + 25);
+    const l2 = 2 * Math.PI * m2;                                                       // rangée près de la semelle tendue : α·m > 2π·m
+    const l3 = Math.min(2 * Math.PI * m2, 4 * m2 + 1.25 * 75);                          // rangée intérieure côté comprimé
+    const rowsH = [[l1, m1, 138 + 190], [l2, m2, 138 + 81], [l3, m2, 138 - 81]];        // h_r depuis mi-semelle comprimée (145 − 7)
+    const ke = rowsH.map(([l, m]) => 1 / (2 / (0.9 * l * tp ** 3 / m ** 3) + 1 / k10));
+    const s1 = ke.reduce((a, k, i) => a + k * rowsH[i][2], 0), s2 = ke.reduce((a, k, i) => a + k * rowsH[i][2] ** 2, 0);
+    const zeq = s2 / s1, keq = s1 / zeq, Sj = E0 * zeq * zeq * keq;
+    title('F′ · Platines d\'about — rigidité § 6.3 (HE 300 A, t_p = 25 mm, M22 10.9) : calcul manuel détaillé');
+    check('L_b = 2·t_p + 2 rondelles + (tête + écrou)/2 [mm]', g.Lbolt.Lb, 72.7);
+    check('k_10 = 1,6·A_s/L_b [mm]', g.rows[0].k10, k10);
+    check('Rangée débordante : l_eff = 0,5·b_p = 150 mm', g.rows[0].l, l1);
+    check('Rangée débordante : k_5 = 0,9·l_eff·t_p³/m³ [mm]', g.rows[0].k5, 0.9 * l1 * tp ** 3 / m1 ** 3);
+    check('Rangée près de la semelle tendue : l_eff = 2π·m [mm]', g.rows[1].l, l2);
+    check('Rangée intérieure côté comprimé : l_eff = 4m + 1,25e [mm]', g.rows[2].l, l3);
+    check('k_eff,r = 1/(2/k_5 + 1/k_10), rangée 1 [mm]', g.rows[0].keff, ke[0]);
+    check('z_eq = Σk·h²/Σk·h [mm]', g.z, zeq);
+    check('k_eq = Σk·h/z_eq [mm]', g.keq, keq);
+    check('S_j,ini = E·z_eq²·k_eq [MN·m/rad]', g.Sj / 1e9, Sj / 1e9);
+    check('… valeur attendue du calcul manuel ≈ 160,0 MN·m/rad', g.Sj / 1e9, 160.0, 0.02);
+    check('Parts de la souplesse : somme = 100 %', g.rows.reduce((a, r) => a + r.sh5 + r.sh10, 0), 1);
+    check('Classification L_b = 8 m, contreventé : rigide si S_j,ini ≥ 8·EI/L [MN·m/rad]', g.rigidLim / 1e9, 8 * E0 * g.EI / E0 / 8000 / 1e9);
+    check('… S_j,ini = 160 ≥ 38,4 → rigide', g.cls === 'rigide' ? 1 : 0, 1);
+    check('μ = (1,5·M_j,Ed/M_j,Rd)^2,7 si M_j,Ed > 2/3·M_j,Rd (6.28)', g.mu, Math.pow(1.5 * 160e6 / g.MjRd, 2.7));
+    check('η = 3 (tableau 5.2, éclissage à platines)', g.eta, 3);
+    check('Capacité de rotation : 0,36·d·√(f_ub/f_y) [mm]', g.rot.lim, 0.36 * 22 * Math.sqrt(1000 / 345));
+    sr.loads[0].My = 100; check('M_j,Ed = 100 ≤ 2/3·M_j,Rd : μ = 1', EPC.computeEnv(sr).rig.mu, 1);
+    sr.loads[0].My = -160; const gt = EPC.computeEnv(sr).rig;
+    check('M_y < 0 (rangées supérieures tendues, géométrie symétrique) : même S_j,ini', gt.Sj / 1e9, g.Sj / 1e9);
+    const st2 = EPC.defaultState(); st2.shape = 'rhs'; st2.loads = [{ name: 'M', N: 0, Vy: 0, Vz: 0, Mx: 0, My: 30, Mz: 0 }];
+    const gT = EPC.computeEnv(st2).rig;
+    check('Tube SHS 200 × 10 (approximation) : raideur calculée, S_j,ini > 0', gT && gT.approx && gT.Sj > 0 ? 1 : 0, 1);
+    const sp = FirmitasSpliceCalc.classifyJoint(1e10, 1e13, { Lb: 5, frame: 'unbraced' });
+    check('classifyJoint commune (éclisse et platines) : k_b = 25, limite 25·EI/L [N·mm]', sp.rigidLim, 25 * 1e13 / 5000);
+  }
   eps = EPC.defaultState(); eps.Ilay.nInBot = 2; er3 = EPC.compute(eps);
   { const rI = er3.Mres.bot.rows.find((q) => q.type === 'inner'), S = er3.S, mw = (150 - S.tw) / 2 - 0.8 * 5 * Math.SQRT2, e = 75;
     check('Rangée intérieure d’extrémité de groupe : l_eff,nc = min(4m + 1,25e ; 2m + 0,625e + p/2) (tab. 6.6)', rI.cap.nc, Math.min(4 * mw + 1.25 * e, 2 * mw + 0.625 * e + 40)); }

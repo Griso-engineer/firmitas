@@ -15,6 +15,10 @@
   // diamètre moyen d_m de la tête / de l'écrou (moyenne entre plats et sur angles, ISO 4014/4032) pour le poinçonnement
   const DM = { 12: 19.0, 14: 22.0, 16: 25.0, 18: 28.0, 20: 31.5, 22: 34.5, 24: 37.8, 27: 42.6, 30: 47.5, 36: 57.0 };
   const BETAW = { S235: 0.8, S275: 0.85, S355: 0.9, S420: 1.0, S460: 1.0 };
+  // hauteur de tête k (ISO 4014), d'écrou m (ISO 4032), épaisseur de rondelle h (ISO 7089) [mm]
+  const HEADS = { 12: [7.5, 10.8, 2.5], 14: [8.8, 12.8, 2.5], 16: [10, 14.8, 3], 18: [11.5, 15.8, 3], 20: [12.5, 18, 3], 22: [14, 19.4, 3], 24: [15, 21.5, 4], 27: [17, 23.8, 4], 30: [18.7, 25.6, 4], 36: [22.5, 31, 5] };
+  // longueur d'allongement du boulon L_b (tableau 6.11) : serrage (2 platines + rondelles) + ½ tête + ½ écrou
+  function boltLb(d, tp, nWash) { const h = HEADS[d] || [0.62 * d, 0.85 * d, 0.15 * d]; const nw = nWash == null ? 2 : nWash; return { Lb: 2 * tp + nw * h[2] + (h[0] + h[1]) / 2, k: h[0], m: h[1], tw: h[2], nw }; }
 
   function defaultState() {
     return {
@@ -27,6 +31,7 @@
       plate: { tp: 25, af: 8, aw: 5 },
       Ilay: { extTop: true, extBot: true, mx: 45, ex: 40, nInTop: 1, nInBot: 1, mi: 50, p: 80, w: 150, bp: 300, over: 15 },
       Tlay: { sides: 4, nSide: 2, m: 40, e: 35, nChs: 8, over: 15 },
+      rig: { Lb: 8, frame: "braced", washers: 2 },
       cur: 0,
       loads: [{ name: 'ELU 1', N: -50, Vy: 0, Vz: 120, Mx: 0, My: 160, Mz: 0 }]
     };
@@ -53,7 +58,7 @@
       if (Math.abs(tw - tt) < 1e-9) return GEO.rhs(h, b, tt, t.fab);
       // caisson à parois d'épaisseurs différentes : semelles (parois haute et basse, largeur b) t_f, âmes (parois latérales) t_w
       const f = (x) => String(x).replace(".", ",");
-      return Object.assign(GEO.rhs(h, b, Math.max(tt, tw), t.fab), { name: "Caisson " + f(h) + " × " + f(b) + " × " + f(tt) + "/" + f(tw), tf: tt, tw, t: Math.min(tt, tw), box: true, A: 2 * b * tt + 2 * (h - 2 * tt) * tw });
+      return Object.assign(GEO.rhs(h, b, Math.max(tt, tw), t.fab), { name: "Caisson " + f(h) + " × " + f(b) + " × " + f(tt) + "/" + f(tw), tf: tt, tw, t: Math.min(tt, tw), box: true, A: 2 * b * tt + 2 * (h - 2 * tt) * tw, Iy: b * h ** 3 / 12 - (b - 2 * tw) * (h - 2 * tt) ** 3 / 12, Iz: h * b ** 3 / 12 - (h - 2 * tt) * (b - 2 * tw) ** 3 / 12, Wply: b * h * h / 4 - (b - 2 * tw) * (h - 2 * tt) ** 2 / 4 });
     }
     const S = D.findSection(t.fam, t.name, t.fab);
     if (!S) return null;
@@ -151,6 +156,48 @@
     }
     const bp = sides === 2 ? S.b + 2 * over : S.b + 2 * (m + e), hp = sides === "lr" ? S.h + 2 * over : S.h + 2 * (m + e);
     return { bolts, m, e, bp, hp, sides, ns, round: false };
+  }
+
+  // ---------- raideur rotationnelle initiale (NF EN 1993-1-8 § 6.3, tableaux 6.10 et 6.11) ----------
+  // About-about (« beam splice » à platines, tableau 6.10) : par rangée tendue r, les deux platines en flexion (k5)
+  // et les boulons en traction (k10) en série ; composantes de poteau k1 à k4 sans objet (= ∞).
+  // Plusieurs rangées (6.3.3.1) : z_eq = Σk_eff,r·h_r²/Σk_eff,r·h_r, k_eq = Σk_eff,r·h_r/z_eq ; S_j,ini = E·z_eq²·k_eq (6.27).
+  function stiffRows(rows, E) {
+    rows.forEach((r) => { r.keff = 1 / (2 / r.k5 + 1 / r.k10); });
+    const s1 = rows.reduce((a, r) => a + r.keff * r.h, 0), s2 = rows.reduce((a, r) => a + r.keff * r.h * r.h, 0);
+    if (!(s1 > 0)) return null;
+    const z = s2 / s1, keq = s1 / z;
+    // part de la souplesse : poids de la rangée dans k_eq (k_eff,r·h_r/Σ) × part de la composante dans la rangée
+    rows.forEach((r) => { const w = r.keff * r.h / s1; r.sh5 = w * (2 / r.k5) * r.keff; r.sh10 = w * (1 / r.k10) * r.keff; });
+    return { z, keq, Sj: E * z * z * keq };
+  }
+  function stiffness(s, R, S, o) {
+    const E = 210000, { tp, As, d, fub, fyp, side } = o;
+    const B = boltLb(d, tp, num(s.rig && s.rig.washers, 2));
+    const k10row = 1.6 * As / B.Lb;                          // rangée de 2 boulons (tableau 6.11)
+    let rows = [];
+    if (S.type === 'I') {
+      const out = (R.Mres && R.Mres[side] && R.Mres[side].rows) || [];
+      rows = out.map((r, j) => ({ label: `Rangée ${j + 1} — ${r.type === 'ext' ? 'débordante' : 'intérieure'}`, n: 2, h: r.h, l: r.cap.l1, m: r.cap.m,
+        k5: 0.9 * r.cap.l1 * tp ** 3 / r.cap.m ** 3, k10: k10row }));
+    } else {
+      // approximation (hors EN 1993-1-8 § 6.3) : chaque boulon = demi tronçon en T (0,45·l_eff·t_p³/m³) et 0,8·A_s/L_b,
+      // boulons de même bras de levier regroupés en rangée ; centre de compression à mi-épaisseur de la paroi comprimée
+      const tc = S.type === 'CHS' ? S.t : S.tf || S.t, zc = S.type === 'CHS' ? (S.d - S.t) / 2 : S.h / 2 - tc / 2, m = R.mEff;
+      const by = {};
+      R.geo.bolts.forEach((q, i) => {
+        const h = side === 'bot' ? zc - q.z : q.z + zc; if (!(h > 1e-6)) return;
+        const key = h.toFixed(1), l = R.caps[i].l1;
+        if (!by[key]) by[key] = { h, n: 0, l: 0, k5: 0, k10: 0, m };
+        const g = by[key]; g.n++; g.l += l; g.k5 += 0.45 * l * tp ** 3 / m ** 3; g.k10 += 0.8 * As / B.Lb;
+      });
+      rows = Object.values(by).sort((a, b) => b.h - a.h).map((g, j) => Object.assign(g, { l: g.l / g.n, label: `Rangée ${j + 1} — ${g.n} boulon${g.n > 1 ? 's' : ''}` }));
+    }
+    const res = rows.length ? stiffRows(rows, E) : null;
+    if (!res) return null;
+    const EI = E * S.Iy;
+    const rotLim = 0.36 * d * Math.sqrt(fub / fyp);
+    return Object.assign({ E, side, rows, Lbolt: B, EI, eta: 3, approx: S.type !== 'I', rot: { tp, lim: rotLim, ok: tp <= rotLim } }, res, SC.classifyJoint(res.Sj, EI, s.rig));
   }
 
   function compute(s, idx) {
@@ -296,6 +343,7 @@
       const G = geomT(s, S); R.geo = G;
       const t = S.t, aT = aw, tF = S.type === "RHS" ? S.tf : t, tW = S.type === "RHS" ? S.tw : t;   // parois haute/basse (t_f), latérales (t_w)
       const mEff = G.m - 0.8 * aT * SQ2;
+      R.mEff = mEff;
       geoC('g_m', 'Géométrie — distance boulon–cordon m > 0,5·d (clé, écrou)', 0.5 * d, mEff, `m = ${mEff.toFixed(1)} mm > ${(0.5 * d).toFixed(1)} mm`);
       geoC('g_e', 'Pince e ≥ 1,2·d₀', 1.2 * d0, G.e, `${G.e} mm ≥ ${(1.2 * d0).toFixed(1)} mm`);
       { const P = []; for (let i = 0; i < G.bolts.length; i++) for (let j = i + 1; j < G.bolts.length; j++) P.push(Math.hypot(G.bolts[i].y - G.bolts[j].y, G.bolts[i].z - G.bolts[j].z)); if (P.length) { const pm0 = Math.min(...P); geoC('g_p', 'Entraxe minimal entre boulons ≥ 2,2·d₀', 2.2 * d0, pm0, `${pm0.toFixed(1)} mm ≥ ${(2.2 * d0).toFixed(1)} mm`); } }
@@ -311,7 +359,7 @@
       });
       // tractions : platine rigide, contact sous la paroi comprimée (et non rotation autour du centre du groupe,
       // qui sous-estime la traction en flexion) ; tous boulons tendus si la traction domine
-      const Lb = 2 * tp + 8 + 0.8 * d;                                     // serrage + ½ tête + ½ écrou (approx.)
+      const Lb = boltLb(d, tp, num(s.rig && s.rig.washers, 2)).Lb;          // serrage + ½ tête + ½ écrou (tableau 6.11)
       const k10 = 1.6 * As / Lb, l1m = caps.reduce((a, c) => a + c.l1, 0) / caps.length;
       const k5 = 0.9 * l1m * tp * tp * tp / Math.pow(Math.max(mEff, 1), 3);
       const kbT = 1 / (1 / k10 + 1 / k5);
@@ -361,6 +409,7 @@
       // paroi du tube en compression / section : la barre elle-même est hors champ
       R.Ftb = Ftb;
     }
+    R.rig = stiffness(s, R, S, { tp, As, d, fub: bc.fub, fyp, side: S.type === "I" ? R.Mside : (L.My >= 0 ? "bot" : "top") });
     gChk.forEach((c) => R.checks.push(c));
     R.max = R.checks.reduce((a, c) => Math.max(a, c.r), 0);
     R.gov = R.checks.reduce((a, c) => (!a || c.r > a.r ? c : a), null);
@@ -381,7 +430,28 @@
     rows.sort((a, b) => order[a.grp] - order[b.grp]);
     const max = rows.reduce((a, c) => Math.max(a, c.r), 0);
     const gov = rows.reduce((a, c) => (!a || c.r > a.r ? c : a), null);
-    return { runs, rows, max, gov, govIdx: gov ? gov.idx : 0, valid: runs.every((r) => r.valid), partial: runs.some((r) => r.partial), perLoad: runs.map((r) => r.max) };
+    return { runs, rows, max, gov, govIdx: gov ? gov.idx : 0, valid: runs.every((r) => r.valid), partial: runs.some((r) => r.partial), perLoad: runs.map((r) => r.max), rig: rigEnv(s, runs) };
+  }
+
+  // rigidité de l'assemblage : torseur de plus grand |M_y| ; M_j,Rd sous M_y seul ; raideur sécante (6.28)
+  function rigEnv(s, runs) {
+    if (!runs.length || !runs.every((r) => r.valid)) return null;
+    let iM = 0; runs.forEach((r, i) => { if (Math.abs(r.L.My) > Math.abs(runs[iM].L.My)) iM = i; });
+    const r0 = runs[iM]; if (!r0.rig) return null;
+    const sg = r0.L.My >= 0 ? 1 : -1;
+    let MjRd;
+    if (r0.S.type === 'I') MjRd = r0.MjRd;
+    else {
+      // tubes : moment M_y seul qui porte le critère (hors géométrie) le plus sollicité à 100 %
+      const s2 = JSON.parse(JSON.stringify(s)); s2.loads = [{ name: 'M', N: 0, Vy: 0, Vz: 0, Mx: 0, My: 100 * sg, Mz: 0 }]; s2.cur = 0;
+      const r2 = compute(s2, 0), mx = r2.checks.filter((c) => !c.geo).reduce((a, c) => Math.max(a, c.r), 0);
+      MjRd = mx > 0 ? 100e6 / mx : null;
+    }
+    const MjEd = Math.abs(r0.L.My), g = Object.assign({}, r0.rig, { idx: iM, loadName: r0.loadName, MjRd, MjEd });
+    g.mu = MjRd > 0 && MjEd > 2 / 3 * MjRd ? Math.pow(1.5 * MjEd / MjRd, 2.7) : 1;   // (6.28), ψ = 2,7
+    g.Sjs = g.Sj / g.mu;
+    g.Mpl = r0.S.Wply ? r0.S.Wply * r0.mat.fym / r0.gam.M0 : null;
+    return g;
   }
 
   function summary(st) {
@@ -391,5 +461,5 @@
     } catch (e) { return null; }
   }
 
-  window.FirmitasEPCalc = { compute, computeEnv, defaultState, upgrade, summary, tstub, memberOf, DM, alphaOf, tubeTension };
+  window.FirmitasEPCalc = { compute, computeEnv, defaultState, upgrade, summary, tstub, memberOf, DM, alphaOf, tubeTension, boltLb, stiffRows, HEADS };
 })();
