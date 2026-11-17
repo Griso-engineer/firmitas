@@ -40,6 +40,7 @@ prédimensionnement d’une travée) ; les anomalies relevées et corrigées son
 - **Boulons** (onglet *Boulons*) : un boulon sous F_v, F_t et flexion M_b (3 approches) ; pression diamétrale avec k_1 et α_b
   selon la position (rive / intérieur dans les deux directions), poinçonnement, pinces et entraxes ; longueur en prise dans un
   taraudage (Dose & Pittner, avec γ_M2) ; couple de serrage (VDI 2230). Reprise du classeur « Bolt verification - LG » (section I).
+- **Plaques** (onglet *Plaques*) : tôles rectangulaires d'épaisseur constante appuyées sur 2, 3 ou 4 côtés (appuis simples,  encastrements, bords libres), pression uniforme, variable ou charge concentrée ; contraintes, flèche et réactions d'après  W. C. Young & R. G. Budynas, *Roark's Formulas for Stress and Strain*, tableau 11.4 (coefficients α, β, γ interpolés en a/b) ;  deux côtés opposés : flexion cylindrique ; σ ELU ≤ f<sub>y</sub>/γ<sub>M0</sub> et flèche ELS ≤ b/limite ; effet membrane en grandes  flèches (§ 11.11) pour information. Recoupé avec Timoshenko et des calculs manuels (section J de tests.html).
 - **Hypothèses communes aux assemblages** (révision après relecture externe) : f<sub>u</sub> minimal de la norme de
   produit selon l'épaisseur (NF EN 10025-2 : 470 MPa pour S355 jusqu'à 100 mm) ; trous normaux, surdimensionnés ou
   oblongs (d<sub>0</sub> EN 1090-2, k<sub>s</sub> et réduction 0,8 / 0,6 de la pression diamétrale) ; pinces, entraxes

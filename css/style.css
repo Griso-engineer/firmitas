@@ -370,3 +370,17 @@ ol.audit li b.sev.l { background: var(--paper-2); }
 @media (max-width: 1180px) { .fig-grid.g4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .fig-grid.g3 { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 880px) { .fig-grid.g4 { grid-template-columns: minmax(0, 1fr); } }
 .cap { font-size: 11px; color: var(--muted); margin: 6px 0 0; line-height: 1.4; }
+/* Plaques (Roark) */
+.pl-group { margin-bottom: 10px; }
+.pl-cases { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.pl-case { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px; align-items: center; text-align: left; font: inherit; font-size: 12.5px; font-weight: 600; line-height: 1.25; color: var(--ink); background: var(--paper); border: 1px solid var(--line); padding: 7px 9px; cursor: pointer; }
+.pl-case small { display: block; font-weight: 400; color: var(--muted); font-size: 11px; margin-top: 2px; }
+.pl-case:hover { border-color: var(--c-coral); }
+.pl-case.on { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); background: var(--paper-2); }
+.pl-legend { display: flex; gap: 16px; font-size: 12px; justify-content: center; margin-top: 4px; }
+.pl-legend .k::before { content: ''; display: inline-block; width: 22px; vertical-align: middle; margin-right: 6px; border-top: 1.6px solid var(--ink); }
+.pl-legend .k.fx::before { border-top-width: 4px; } .pl-legend .k.fr::before { border-top: 1.3px dashed #8b9d99; }
+.pl-badge { display: inline-block; min-width: 20px; text-align: center; font-size: 11px; font-weight: 700; color: #fff; padding: 1px 4px; }
+.pl-badge.s { background: #c0392b; } .pl-badge.y { background: var(--ok); } .pl-badge.R { background: var(--c-orange); }
+.pl-tab { margin-top: 18px; font-size: 13px; } .pl-tab summary { cursor: pointer; font-weight: 700; }
+.pl-tab th.hl, .pl-tab td.hl { background: var(--c-sun); }

@@ -26,6 +26,7 @@
 <script src="js/platines-calc.js?v=3f39dd65"></script>
 <script src="js/soudure-calc.js?v=8961c627"></script>
 <script src="js/boulons-calc.js?v=60d8f97b"></script>
+<script src="js/plaques-calc.js?v=50f42985"></script>
 <script>
 (function () {
   const E = FirmitasEC3, ST = FirmitasStore, D = FIRMITAS_DATA, G = FirmitasGeom, X = FIRMITAS_XLREF;
@@ -426,6 +427,45 @@
     check('… τ_B sous 7,7 kN [MPa] (D25)', 7700 / (tp.At * tp.ab), 221.17398371940891);
     const rt = BC.compute(bs({ d: 6, cls: 'A4-50', tap: { on: true, fu: 500, ang: 60, m: '' }, tq: { on: false }, loads: [{ name: 'T', Fv: 0, Ft: 7.7, Mb: 0, Fb: 0 }] }), 0);
     check('… taux avec γ_M2 = 1,25 (le classeur, sans γ_M2 : 0,766)', ck(rt, 'tb').r, 0.76616915422885579 * 1.25, 2e-4);
+  }
+
+  // ----------------------------------------------------------------------
+  title('J · Plaques — Roark, tableau 11.4 : valeurs classiques (Timoshenko), limites de la bande, calcul manuel');
+  {
+    const PC = window.FirmitasPlateCalc, cf = (id, ld, ab, k) => PC.coef(PC.CASE[id].loads[ld].r, PC.CASE[id].loads[ld].c[k], ab).v;
+    const D12 = 12 * (1 - 0.3 * 0.3);
+    check('Carrée sur 4 appuis : α = 0,00406·12(1−ν²) (Timoshenko, w = 0,00406·q·a⁴/D)', cf('c1', 'uni', 1, 'a'), 0.00406 * D12, 3e-3);
+    check('Carrée sur 4 appuis : β = 6 × 0,0479 (M au centre = 0,0479·q·a²)', cf('c1', 'uni', 1, 'b'), 6 * 0.0479, 1e-3);
+    check('Carrée encastrée : α = 0,00126·12(1−ν²)', cf('c8', 'uni', 1, 'a'), 0.00126 * D12, 3e-3);
+    check('Carrée encastrée : β₁ = 6 × 0,0513 (M au milieu des côtés)', cf('c8', 'uni', 1, 'b1'), 6 * 0.0513, 1e-3);
+    check('Carrée encastrée : β₂ = 6 × 0,0231 (M au centre)', cf('c8', 'uni', 1, 'b2'), 6 * 0.0231, 1e-3);
+    check('4 appuis, a/b → ∞ : bande appuyée α = 5·12(1−ν²)/384', cf('c1', 'uni', 1e9, 'a'), 5 * D12 / 384, 1e-3);
+    check('4 appuis, a/b → ∞ : β = 0,75 (M = q·b²/8)', cf('c1', 'uni', 1e9, 'b'), 0.75, 1e-3);
+    check('4 encastrés, a/b → ∞ : bande bi-encastrée α = 12(1−ν²)/384', cf('c8', 'uni', 1e9, 'a'), D12 / 384, 1e-2);
+    check('Interpolation a/b = 1,5 (cas 1a) : β = (0,4530 + 0,5172)/2', cf('c1', 'uni', 1.5, 'b'), 0.4851, 1e-9);
+    check('Interpolation vers ∞ (cas 1a, a/b = 10) : linéaire en b/a entre 5 et ∞', cf('c1', 'uni', 10, 'a'), 0.1417 + (0.1421 - 0.1417) * 0.5, 1e-9);
+    // calcul manuel : 1 500 × 1 000 × 10 mm, 4 appuis simples, q = 5 kPa
+    const s = PC.upgrade({ kind: 'plaque', cas: 'c1', load: 'uni', a: 1500, b: 1000, t: 10, grade: 'S235', nu: 0.3, qu: 5, qs: 5, lim: 150 });
+    const R = PC.compute(s), o = (u) => R.uls.find((x) => x.unit === u);
+    check('Manuel : σ = 0,4851 × 0,005 × 1000² / 10² [MPa]', o('MPa').v, 0.4851 * 0.005 * 1e6 / 100);
+    check('Manuel : y = 0,0838 × 0,005 × 1000⁴ / (210 000 × 10³) [mm]', o('mm').v, 0.0838 * 0.005 * 1e12 / (210000 * 1000));
+    check('Manuel : R = 0,4845 × 0,005 × 1000 [kN/m]', o('kN/m').v, 0.4845 * 0.005 * 1000);
+    check('Taux contrainte = σ / (235/1,0)', R.checks.find((x) => x.id === 'sig').r, 0.4851 * 0.005 * 1e6 / 100 / 235);
+    check('Taux flèche = y / (1000/150)', R.checks.find((x) => x.id === 'defl').r, 0.0838 * 0.005 * 1e12 / (210000 * 1000) / (1000 / 150));
+    // bandes : formules de poutre
+    const sb = PC.compute(PC.upgrade({ kind: 'plaque', cas: 'b-ff', load: 'uni', a: 2000, b: 800, t: 8, grade: 'S355', nu: 0.3, qu: 10, qs: 10 }));
+    check('Bande bi-encastrée : σ appui = q·b²/2/t² [MPa]', -sb.uls[0].v, 0.010 * 800 * 800 / 2 / 64);
+    check('Bande bi-encastrée : y = q·b⁴/(384·D) [mm]', sb.uls.find((x) => x.unit === 'mm').v, 0.010 * 800 ** 4 / (384 * 210000 * 8 ** 3 / (12 * 0.91)));
+    // charge concentrée (1b) : rayon équivalent r′o
+    const sc = PC.compute(PC.upgrade({ kind: 'plaque', cas: 'c1', load: 'conc', a: 1000, b: 1000, t: 10, grade: 'S235', nu: 0.3, Wu: 10, Ws: 10, ro: 2 }));
+    check('Rayon équivalent r′o = √(1,6·2² + 10²) − 0,675·10 [mm]', sc.geo.rop, Math.sqrt(1.6 * 4 + 100) - 6.75);
+    check('Charge concentrée carrée : σ = 3W/(2πt²)·[1,3·ln(2b/πr′o) + 0,435]', sc.uls[0].v, 3 * 10000 / (2 * Math.PI * 100) * (1.3 * Math.log(2000 / (Math.PI * sc.geo.rop)) + 0.435));
+    // grandes flèches : tangente linéaire à l'origine et points du tableau
+    const tab = PC.LARGE.ss[0], al = 0.0444, be = 0.2874;
+    check('Grandes flèches, Q = 0,5 : w ≈ α·Q (théorie linéaire)', PC.largeDefl(tab, al, be, 0.5).w, al * 0.5, 2e-3);
+    check('Grandes flèches, Q = 100 (carrée, bords appuyés) : y/t ≈ 1,26 (tableau § 11.11)', PC.largeDefl(tab, al, be, 100).w, 1.26, 0.06);
+    check('Grandes flèches, Q = 250 : y/t ≈ 1,77', PC.largeDefl(tab, al, be, 250).w, 1.77, 0.06);
+    check('Grandes flèches, Q = 100 : σ·b²/(E·t²) ≈ 12,8', PC.largeDefl(tab, al, be, 100).s, 12.8, 0.08);
   }
 
   const lib = []; let nLib = 0, nBad = 0;
