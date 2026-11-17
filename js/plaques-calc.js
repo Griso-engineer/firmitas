@@ -189,12 +189,17 @@
   function defaultState() {
     return {
       v: 1, kind: 'plaque', name: 'Plaque T1', cas: 'c1', load: 'uni',
-      a: 1500, b: 1000, t: 10, grade: 'S235', nu: 0.3, lim: 150, large: true,
+      a: 1500, b: 1000, t: 10, grade: "S235", nu: 0.3, large: true,
       gam: { M0: 1.0 },
-      qu: 7.5, qs: 5, Wu: 15, Ws: 10, ro: 50
+      qu: 7.5, Wu: 15, ro: 50,
+      // cas ELS : charge (q en kPa ou W en kN selon le type de charge) et flèche limite b/lim, un critère par cas
+      sls: [{ name: "ELS caractéristique", q: 5, W: 10, lim: 150 }]
     };
   }
   function upgrade(s) {
+    // ancien format : un seul cas ELS (qs, Ws, lim)
+    if (!Array.isArray(s.sls) || !s.sls.length) s.sls = [{ name: "ELS caractéristique", q: s.qs != null ? s.qs : 5, W: s.Ws != null ? s.Ws : 10, lim: s.lim != null ? s.lim : 150 }];
+    delete s.qs; delete s.Ws; delete s.lim;
     const d = defaultState();
     (function merge(dst, src) {
       Object.keys(src).forEach((k) => {
@@ -212,16 +217,17 @@
     const c = CASE[s.cas] || CASE.c1, L = c.loads[s.load] || c.loads.uni, conc = /^conc/.test(s.load);
     R.case = c; R.L = L;
     let a = num(s.a), b = num(s.b);
-    const t = num(s.t), nu = num(s.nu, 0.3), lim = num(s.lim, 150), gM0 = num(s.gam && s.gam.M0, 1);
-    const qu = num(s.qu), qs = num(s.qs), Wu = num(s.Wu), Ws = num(s.Ws), ro = num(s.ro);
+    const t = num(s.t), nu = num(s.nu, 0.3), gM0 = num(s.gam && s.gam.M0, 1);
+    const qu = num(s.qu), Wu = num(s.Wu), ro = num(s.ro);
+    const SL = (Array.isArray(s.sls) && s.sls.length ? s.sls : [{}]).map((x, i) => ({ name: String(x.name || "").trim() || "ELS " + (i + 1), q: num(x.q), W: num(x.W), lim: num(x.lim, 150) }));
     const bad = [];
     if (!(a > 0) || !(b > 0)) bad.push('côtés a et b');
     if (!(t > 0)) bad.push('épaisseur t');
     if (!(nu >= 0 && nu < 0.5)) bad.push('coefficient de Poisson');
     if (!(gM0 > 0)) bad.push('γ_M0');
-    if (!(lim > 0)) bad.push('flèche limite');
+    if (SL.some((x) => !(x.lim > 0))) bad.push("flèche limite");
     if (conc && !(ro > 0)) bad.push('rayon de la zone chargée');
-    if (conc ? (Wu < 0 || Ws < 0) : (qu < 0 || qs < 0)) bad.push('charges (positives attendues)');
+    if (conc ? (Wu < 0 || SL.some((x) => x.W < 0)) : (qu < 0 || SL.some((x) => x.q < 0))) bad.push('charges (positives attendues)');
     if (bad.length) { R.valid = false; R.warnings.push('Données invalides : ' + bad.join(', ') + '.'); return R; }
     let swapped = false;
     if (c.swap && a > b) { [a, b] = [b, a]; swapped = true; }
@@ -229,9 +235,10 @@
     const rop = ro < 0.5 * t ? Math.sqrt(1.6 * ro * ro + t * t) - 0.675 * t : ro;   // rayon équivalent (tableau 11.4)
     const g = { a, b, t, E, nu, rop };
     const ratio = a / b;
-    R.geo = { a, b, t, ratio, swapped, fy, gM0, lim, rop, E, nu };
-    const U = evalLoad(c, L, g, qu, Wu), Sv = evalLoad(c, L, g, qs, Ws);
-    R.uls = U.out; R.sls = Sv.out; R.cs = U.cs;
+    R.geo = { a, b, t, ratio, swapped, fy, gM0, rop, E, nu };
+    const U = evalLoad(c, L, g, qu, Wu);
+    R.slsCases = SL.map((x) => Object.assign(x, { out: evalLoad(c, L, g, x.q, x.W).out }));
+    R.uls = U.out; R.cs = U.cs;
     if (!c.strip) {
       if (Object.values(U.cs).some((x) => x.clamp)) R.warnings.push(`a/b = ${ratio.toFixed(2)} sort du tableau de Roark (${L.r[0]} à ${L.r[L.r.length - 1] === INF ? '∞' : L.r[L.r.length - 1]}) : coefficients pris à la borne.`);
       if (c.min >= 1 && num(s.a) < num(s.b)) R.warnings.push('Pour ce cas, a désigne le grand côté : saisir a ≥ b.');
@@ -244,16 +251,19 @@
     const add = (o) => { o.r = o.Rd > 0 ? Math.abs(o.Ed) / o.Rd : (Math.abs(o.Ed) > 0 ? Infinity : 0); R.checks.push(o); return o; };
     const sU = U.out.filter((o) => o.unit === 'MPa').reduce((m, o) => (Math.abs(o.v) > Math.abs(m ? m.v : 0) ? o : m), null);
     if (sU) add({ grp: 'uls', id: 'sig', label: 'Contrainte de flexion |σ|_max ≤ f_y/γ_M0 (' + sU.label.charAt(0).toLowerCase() + sU.label.slice(1) + ')', ref: 'Roark 11.4 · élastique', Ed: Math.abs(sU.v), Rd: fy / gM0, unit: 'MPa' });
-    const yS = Sv.out.find((o) => o.unit === 'mm');
-    if (yS) add({ grp: 'sls', id: 'defl', label: `Flèche ELS ≤ b/${lim}`, ref: 'Roark 11.4 · ELS', Ed: Math.abs(yS.v), Rd: b / lim, unit: 'mm' });
-    else R.info.push('Roark ne donne pas la flèche pour ce cas : flèche non vérifiée.');
+    R.slsCases.forEach((x, i) => { x.y = x.out.find((o) => o.unit === "mm"); if (x.y) x.chk = add({ grp: "sls", id: "defl" + (i ? i + 1 : ""), label: `Flèche ELS${SL.length > 1 ? " « " + x.name + " »" : ""} ≤ b/${x.lim}`, ref: "Roark 11.4 · ELS", Ed: Math.abs(x.y.v), Rd: b / x.lim, unit: "mm" }); });
+    // cas ELS dimensionnant (plus grand taux de flèche) : sert aux grandeurs affichées et à l'effet membrane
+    R.slsGov = R.slsCases.reduce((m, x) => (x.chk && (!m.chk || x.chk.r > m.chk.r) ? x : m), R.slsCases[0]);
+    R.sls = R.slsGov.out;
+    const yS = R.slsGov.y;
+    if (!yS) R.info.push('Roark ne donne pas la flèche pour ce cas : flèche non vérifiée.');
     // grandes flèches (4 appuis simples ou 4 encastrements, pression uniforme)
     if ((c.id === 'c1' || c.id === 'c8') && s.load === 'uni') {
       const tabs = LARGE[c.id === 'c1' ? 'ss' : 'fx'];
       const tab = ratio >= tabs[tabs.length - 1].r ? tabs[tabs.length - 1] : tabs.reduce((m, x) => (Math.abs(x.r - ratio) < Math.abs(m.r - ratio) ? x : m));
       const al = U.cs.a.v, be = Object.keys(U.cs).filter((k) => k[0] === 'b').reduce((m, k) => Math.max(m, Math.abs(U.cs[k].v)), 0);
       const one = (qkPa) => { const Q = qkPa / 1000 * b ** 4 / (E * t ** 4), L2 = largeDefl(tab, al, be, Q); return { Q, y: L2.w * t, s: L2.s * E * t * t / (b * b), out: Q > LD_Q[LD_Q.length - 1] }; };
-      R.large = { uls: one(qu), sls: one(qs), where: tab.where, table: tab.label || String(tab.r).replace('.', ',') };
+      R.large = { uls: one(qu), sls: one(R.slsGov.q), slsAll: R.slsCases.map((x) => one(x.q)), where: tab.where, table: tab.label || String(tab.r).replace('.', ',') };
       if (s.large && R.large.sls.y / t > 0.5) R.info.push(`Flèche ELS supérieure à t/2 : l'effet membrane réduit la flèche à ${R.large.sls.y.toFixed(1)} mm et la contrainte ELU à ${R.large.uls.s.toFixed(0)} MPa si les bords sont retenus dans leur plan (§ 11.11).`);
     } else if (yS && Math.abs(yS.v) > 0.5 * t) R.info.push('Flèche supérieure à t/2 : l\'effet membrane devient significatif, la théorie linéaire surestime flèche et contraintes (§ 11.11).');
     R.max = R.checks.reduce((m, x) => Math.max(m, x.r), 0);

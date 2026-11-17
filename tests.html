@@ -26,7 +26,7 @@
 <script src="js/platines-calc.js?v=3f39dd65"></script>
 <script src="js/soudure-calc.js?v=8961c627"></script>
 <script src="js/boulons-calc.js?v=60d8f97b"></script>
-<script src="js/plaques-calc.js?v=50f42985"></script>
+<script src="js/plaques-calc.js?v=f441e812"></script>
 <script>
 (function () {
   const E = FirmitasEC3, ST = FirmitasStore, D = FIRMITAS_DATA, G = FirmitasGeom, X = FIRMITAS_XLREF;
@@ -452,6 +452,15 @@
     check('Manuel : R = 0,4845 × 0,005 × 1000 [kN/m]', o('kN/m').v, 0.4845 * 0.005 * 1000);
     check('Taux contrainte = σ / (235/1,0)', R.checks.find((x) => x.id === 'sig').r, 0.4851 * 0.005 * 1e6 / 100 / 235);
     check('Taux flèche = y / (1000/150)', R.checks.find((x) => x.id === 'defl').r, 0.0838 * 0.005 * 1e12 / (210000 * 1000) / (1000 / 150));
+    {
+      // plusieurs cas ELS : une charge et une flèche limite par cas
+      const sm = PC.upgrade({ kind: "plaque", cas: "c1", load: "uni", a: 1500, b: 1000, t: 10, grade: "S235", nu: 0.3, qu: 5, sls: [{ name: "G+Q", q: 5, lim: 150 }, { name: "Q seul", q: 3, lim: 300 }] });
+      const Rm = PC.compute(sm), y1 = 0.0838 * 0.005 * 1e12 / (210000 * 1000);
+      check("2 cas ELS : 2 critères de flèche", Rm.checks.filter((x) => x.grp === "sls").length, 2);
+      check("… cas Q seul : taux = y(3 kPa) / (1000/300)", Rm.checks.find((x) => x.id === "defl2").r, y1 * 3 / 5 / (1000 / 300));
+      check("… cas dimensionnant = Q seul (0,6·y pour une limite 2 fois plus sévère)", Rm.slsGov.name === "Q seul" ? 1 : 0, 1);
+      check("Ancien format (qs, lim) repris comme cas ELS unique", PC.upgrade({ kind: "plaque", qs: 4, lim: 200 }).sls[0].lim, 200);
+    }
     // bandes : formules de poutre
     const sb = PC.compute(PC.upgrade({ kind: 'plaque', cas: 'b-ff', load: 'uni', a: 2000, b: 800, t: 8, grade: 'S355', nu: 0.3, qu: 10, qs: 10 }));
     check('Bande bi-encastrée : σ appui = q·b²/2/t² [MPa]', -sb.uls[0].v, 0.010 * 800 * 800 / 2 / 64);

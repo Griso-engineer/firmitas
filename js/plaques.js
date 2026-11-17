@@ -95,13 +95,18 @@
         <div class="fields">
           ${field('Côté a', inp('a'), 'mm')}${field('Côté b', inp('b'), 'mm')}${field('Épaisseur t', inp('t'), 'mm')}
           ${field('Acier', sel('grade', grades()))}${field('Coefficient de Poisson ν', inp('nu'))}${field('γ<sub>M0</sub>', inp('gam.M0'))}
-          ${field('Flèche limite : b /', inp('lim'), '', 'ex. 150 pour une tôle de plancher')}
           ${field('Charge', sel('load', Object.entries(c.loads).map(([k, l]) => [k, `${l.label} (${l.roark})`]), { rr: true }))}
         </div>
-        <div class="sub-title">${conc ? 'Charge concentrée au centre' : /lin|tri/.test(st.load) ? 'Pression (valeur maximale)' : 'Pression uniforme'}</div>
+        <div class="sub-title">${conc ? 'Charge concentrée au centre' : /lin|tri/.test(st.load) ? 'Pression (valeur maximale)' : 'Pression uniforme'} — ELU</div>
         <div class="fields">${conc
-          ? `${field('W ELU', inp('Wu'), 'kN')}${field('W ELS', inp('Ws'), 'kN')}${field('Rayon de la zone chargée r<sub>o</sub>', inp('ro'), 'mm', 'r′<sub>o</sub> = √(1,6·r<sub>o</sub>² + t²) − 0,675·t si r<sub>o</sub> < 0,5·t')}`
-          : `${field('q ELU', inp('qu'), 'kPa')}${field('q ELS', inp('qs'), 'kPa')}`}</div>
+          ? `${field('W ELU', inp('Wu'), 'kN')}${field('Rayon de la zone chargée r<sub>o</sub>', inp('ro'), 'mm', 'r′<sub>o</sub> = √(1,6·r<sub>o</sub>² + t²) − 0,675·t si r<sub>o</sub> < 0,5·t')}`
+          : `${field('q ELU', inp('qu'), 'kPa')}`}</div>
+        <div class="sub-title">Cas ELS et critères de flèche</div>
+        <div class="tbl-wrap"><table class="grid">
+          <thead><tr><th class="rowh">Cas ELS</th><th>${conc ? 'W [kN]' : 'q [kPa]'}</th><th>Flèche limite b /</th><th>Flèche [mm]</th><th>Taux</th><th></th></tr></thead>
+          <tbody>${st.sls.map((x, i) => `<tr><td><input type="text" data-qp="sls.${i}.name" value="${esc(x.name)}" style="min-width:150px;text-align:left"></td><td><input type="number" step="any" data-qp="sls.${i}.${conc ? 'W' : 'q'}" value="${esc(conc ? x.W : x.q)}"></td><td><input type="number" step="any" data-qp="sls.${i}.lim" value="${esc(x.lim)}" placeholder="ex. 150"></td><td class="ro" id="qSlsY${i}"></td><td class="ro" id="qSlsR${i}"></td><td>${st.sls.length > 1 ? `<button class="btn sm ghost" data-qact="delSls" data-i="${i}" title="Supprimer ce cas">✕</button>` : ''}</td></tr>`).join('')}</tbody>
+        </table></div>
+        <div style="margin:8px 0 4px"><button class="btn sm" data-qact="addSls" title="Ajouter un cas ELS">+</button></div>
         ${(st.cas === 'c1' || st.cas === 'c8') && st.load === 'uni' ? `<div style="margin:12px 0">${chk('large', 'Signaler l’effet membrane (grandes flèches, § 11.11)')}</div>` : ''}
         <div id="qInfo" class="muted" style="font-size:12.5px;line-height:1.6;margin-top:8px"></div>
       </div>
@@ -124,6 +129,7 @@
     if (fig) fig.innerHTML = plan(R);
     if (info) info.innerHTML = `a/b = <b style="color:var(--ink)">${fmt(G.ratio, 2)}</b> · f<sub>y</sub> = ${G.fy} MPa · E = ${fmtG(G.E, 0)} MPa · cas ${esc(R.L.roark)}${R.L.nu != null ? ` (tableau établi pour ν = ${String(R.L.nu).replace('.', ',')})` : ''}`;
     if (!box) return;
+    R.slsCases.forEach((x, i) => { const cy = $("#qSlsY" + i), cr = $("#qSlsR" + i); if (cy) cy.textContent = x.y ? fmt(Math.abs(x.y.v), 2) + " ≤ " + fmt(G.b / x.lim, 2) : "—"; if (cr) cr.innerHTML = x.chk ? `<b style="color:${x.chk.r > 1 ? "var(--c-red)" : "inherit"}">${pct(x.chk.r)}</b>${R.slsCases.length > 1 && x === R.slsGov ? " ◂" : ""}` : "—"; });
     const yU = R.uls.find((o) => o.unit === 'mm'), yS = R.sls.find((o) => o.unit === 'mm');
     const sMax = R.uls.filter((o) => o.unit === 'MPa').reduce((m, o) => Math.max(m, Math.abs(o.v)), 0);
     const rows = R.checks.map((x) => `<tr${R.gov === x ? ' class="gov"' : ''}><td>${sub(x.label)}</td><td class="f">${x.ref}</td><td class="num">${fmt(x.Ed, x.unit === 'mm' ? 2 : 1)}</td><td class="num">${fmt(x.Rd, x.unit === 'mm' ? 2 : 1)}</td><td class="f">${x.unit}</td><td class="num"><span class="ratio">${pct(x.r)}</span></td><td style="width:100px">${bar(x.r)}</td><td>${pill(x.r)}</td></tr>`).join('');
@@ -145,11 +151,11 @@
       <div class="kpis k3">
         <div class="kpi ${R.max <= 1 ? 'hero' : 'bad'}"><b>Taux maximal</b><span>${pct(R.max)}</span><small>${R.max <= 1 ? 'Vérifié pour les critères traités*' : 'Plaque non vérifiée'}</small></div>
         <div class="kpi"><b>Contrainte ELU</b><span>${fmt(sMax, 1)} MPa</span><small>f<sub>y</sub>/γ<sub>M0</sub> = ${fmt(G.fy / G.gM0, 0)} MPa</small></div>
-        <div class="kpi"><b>Flèche ELS</b><span>${yS ? fmt(Math.abs(yS.v), 2) + ' mm' : '—'}</span><small>${yS ? `b/${Math.round(G.b / Math.abs(yS.v))} · y/t = ${fmt(Math.abs(yS.v) / G.t, 2)}` : 'non donnée par Roark pour ce cas'}</small></div>
+        <div class="kpi"><b>Flèche ELS${st.sls.length > 1 ? " — " + esc(R.slsGov.name) : ""}</b><span>${yS ? fmt(Math.abs(yS.v), 2) + ' mm' : '—'}</span><small>${yS ? `b/${Math.round(G.b / Math.abs(yS.v))} (limite b/${fmtG(R.slsGov.lim, 0)}) · y/t = ${fmt(Math.abs(yS.v) / G.t, 2)}` : 'non donnée par Roark pour ce cas'}</small></div>
       </div>
       <div class="tbl-wrap" style="margin-top:18px"><table class="tbl"><thead><tr><th>Critère</th><th>Réf.</th><th class="num">E<sub>d</sub></th><th class="num">R<sub>d</sub></th><th>Unité</th><th class="num">Taux</th><th></th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
       <div class="sub-title" style="margin-top:22px">Grandeurs calculées</div>
-      <div class="tbl-wrap"><table class="tbl compact"><thead><tr><th></th><th>Grandeur</th><th>Formule</th><th class="num">Coef.</th><th class="num">ELU</th><th class="num">ELS</th><th>Unité</th></tr></thead><tbody>${outRows}</tbody></table></div>
+      <div class="tbl-wrap"><table class="tbl compact"><thead><tr><th></th><th>Grandeur</th><th>Formule</th><th class="num">Coef.</th><th class="num">ELU</th><th class="num">ELS${st.sls.length > 1 ? " « " + esc(R.slsGov.name) + " »" : ""}</th><th>Unité</th></tr></thead><tbody>${outRows}</tbody></table></div>
       ${large}${tab}
       <p class="note">* Critères traités : contrainte de flexion élastique ≤ f<sub>y</sub>/γ<sub>M0</sub> (première plastification, une seule direction de contrainte donnée par Roark), flèche ELS. Hors champ : réserve plastique (lignes de rupture), voilement sous compression dans le plan, fatigue, assemblages des bords. Si les coins peuvent se soulever, la contrainte au centre d’une plaque carrée sur appuis simples augmente d’environ 35 % (Roark § 11.10).</p>`;
   }
@@ -175,15 +181,15 @@
       ${H2('Hypothèses')}
       <div class="rp-kv">
         ${kv('Dimensions', `a = ${fmtG(G.a, 0)} mm, b = ${fmtG(G.b, 0)} mm, a/b = ${fmt(G.ratio, 2)}, t = ${fmtG(G.t, 1)} mm`)}${kv('Acier', `${esc(s.grade)}, f<sub>y</sub> = ${G.fy} MPa, E = ${fmtG(G.E, 0)} MPa, ν = ${fmtG(G.nu, 2)}, γ<sub>M0</sub> = ${fmtG(G.gM0, 2)}`)}
-        ${kv('Charge ELU', conc ? `W = ${fmtG(+s.Wu, 2)} kN sur r<sub>o</sub> = ${fmtG(+s.ro, 0)} mm` : `q = ${fmtG(+s.qu, 2)} kPa`)}${kv('Charge ELS', conc ? `W = ${fmtG(+s.Ws, 2)} kN` : `q = ${fmtG(+s.qs, 2)} kPa`)}
-        ${kv('Flèche limite', `b/${fmtG(G.lim, 0)} = ${fmt(G.b / G.lim, 2)} mm`)}${kv('Appuis', esc(R.case.label))}
+        ${kv('Charge ELU', conc ? `W = ${fmtG(+s.Wu, 2)} kN sur r<sub>o</sub> = ${fmtG(+s.ro, 0)} mm` : `q = ${fmtG(+s.qu, 2)} kPa`)}${kv("Appuis", esc(R.case.label))}
+        ${R.slsCases.map((x) => kv(`Cas ELS « ${esc(x.name)} »`, `${conc ? `W = ${fmtG(x.W, 2)} kN` : `q = ${fmtG(x.q, 2)} kPa`} ; flèche limite b/${fmtG(x.lim, 0)} = ${fmt(G.b / x.lim, 2)} mm`)).join("")}
       </div>
       <div style="margin-top:4pt;max-width:110mm">${plan(R, 420, 300)}</div>
       ${H2('Grandeurs calculées')}
-      <table><thead><tr><th></th><th>Grandeur</th><th>Formule</th><th class="num">Coef.</th><th class="num">ELU</th><th class="num">ELS</th><th>Unité</th></tr></thead><tbody>${outRows}</tbody></table>
+      <table><thead><tr><th></th><th>Grandeur</th><th>Formule</th><th class="num">Coef.</th><th class="num">ELU</th><th class="num">ELS${s.sls.length > 1 ? " « " + esc(R.slsGov.name) + " »" : ""}</th><th>Unité</th></tr></thead><tbody>${outRows}</tbody></table>
       ${H2('Vérifications')}
       <table><thead><tr><th>Critère</th><th>Réf.</th><th class="num">E<sub>d</sub></th><th class="num">R<sub>d</sub></th><th>Unité</th><th class="num">Taux</th><th>Statut</th></tr></thead><tbody>${chkRows}</tbody></table>
-      ${R.large && s.large ? `<p style="font-size:7.6pt">Grandes flèches (§ 11.11, bords retenus dans leur plan) : flèche ELS ${fmt(R.large.sls.y, 2)} mm, contrainte ELU ${fmt(R.large.uls.s, 1)} MPa (pour information).</p>` : ''}
+      ${R.large && s.large ? `<p style="font-size:7.6pt">Grandes flèches (§ 11.11, bords retenus dans leur plan) : flèche ELS ${R.slsCases.map((x, i) => (R.slsCases.length > 1 ? esc(x.name) + " " : "") + fmt(R.large.slsAll[i].y, 2) + " mm").join(", ")}, contrainte ELU ${fmt(R.large.uls.s, 1)} MPa (pour information).</p>` : ''}
       ${notes.length ? `<p style="font-size:7.6pt"><b>Remarques :</b> ${notes.map(sub).join(' ')}</p>` : ''}
       <div class="rp-concl"><span>Conclusion — tôle ${fmtG(G.t, 1)} mm ${esc(s.grade)}</span><b class="${R.max <= 1 ? 'rp-ok' : 'rp-ko'}">${R.max <= 1 ? 'Vérifié' : 'Non vérifié'} — taux max. ${pct(R.max)}</b></div>
       <p style="font-size:7.4pt;color:#555;margin-top:5pt">Formules et coefficients : W. C. Young, R. G. Budynas, Roark's Formulas for Stress and Strain, chapitre 11, tableau 11.4 (coefficients interpolés en a/b). Contrainte de flexion élastique comparée à f<sub>y</sub>/γ<sub>M0</sub> ; hors champ : réserve plastique, voilement, fatigue, assemblages.</p>
@@ -208,6 +214,8 @@
       const b = e.target.closest('[data-qact]'); if (!b) return;
       const a = b.dataset.qact, y = window.scrollY;
       if (a === 'cas') { st.cas = b.dataset.v; if (!C.CASE[st.cas].loads[st.load]) st.load = 'uni'; dirty = true; persist(); render(app); window.scrollTo(0, y); }
+      else if (a === "addSls") { const L = st.sls[st.sls.length - 1] || {}; st.sls.push({ name: "ELS " + (st.sls.length + 1), q: L.q, W: L.W, lim: L.lim }); dirty = true; persist(); render(app); window.scrollTo(0, y); }
+      else if (a === "delSls") { st.sls.splice(+b.dataset.i, 1); dirty = true; persist(); render(app); window.scrollTo(0, y); }
       else if (a === 'save' || a === 'saveas') { const ok = await A().saveItem('plaque', st, a === 'saveas'); if (ok) { dirty = false; persist(); render(app); window.scrollTo(0, y); } }
       else if (a === 'new') {
         if (dirty && !(await A().confirmBox('Nouvelle plaque', 'Les modifications non enregistrées seront perdues. Continuer ?'))) return;
