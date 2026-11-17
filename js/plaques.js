@@ -14,7 +14,7 @@
   const sub = (s) => esc(s).replace(/_([A-Za-z0-9,.′]+)/g, '<sub>$1</sub>');
   const bar = (r) => `<div class="bar"><i class="${!(r <= 1) ? 'ko' : r > 0.9 ? 'hi' : ''}" style="width:${Math.min(100, (Number.isFinite(r) ? r : 1) * 100)}%"></i></div>`;
   const pill = (r) => (r == null ? '<span class="pill na">—</span>' : r <= 1 ? '<span class="pill ok">OK</span>' : '<span class="pill ko">NON</span>');
-  const fV = (o) => fmt(o.v, o.unit === 'mm' ? 2 : 1);
+  const fV = (o) => fmt(o.v, o.unit === 'mm' ? 2 : 1) + (o.doubt ? ' ⚠ non exploitable' : '');
   let st = null, dirty = false, db = null;
   const get = (p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), st);
   function set(p, v) { const ks = p.split('.'); let a = st; ks.slice(0, -1).forEach((k) => { if (a[k] == null) a[k] = {}; a = a[k]; }); a[ks[ks.length - 1]] = v; }
@@ -107,7 +107,7 @@
           <tbody>${st.sls.map((x, i) => `<tr><td><input type="text" data-qp="sls.${i}.name" value="${esc(x.name)}" style="min-width:150px;text-align:left"></td><td><input type="number" step="any" data-qp="sls.${i}.${conc ? 'W' : 'q'}" value="${esc(conc ? x.W : x.q)}"></td><td><input type="number" step="any" data-qp="sls.${i}.lim" value="${esc(x.lim)}" placeholder="ex. 150"></td><td class="ro" id="qSlsY${i}"></td><td class="ro" id="qSlsR${i}"></td><td>${st.sls.length > 1 ? `<button class="btn sm ghost" data-qact="delSls" data-i="${i}" title="Supprimer ce cas">✕</button>` : ''}</td></tr>`).join('')}</tbody>
         </table></div>
         <div style="margin:8px 0 4px"><button class="btn sm" data-qact="addSls" title="Ajouter un cas ELS">+</button></div>
-        ${(st.cas === 'c1' || st.cas === 'c8') && st.load === 'uni' ? `<div style="margin:12px 0">${chk('large', 'Signaler l’effet membrane (grandes flèches, § 11.11)')}</div>` : ''}
+        ${(st.cas === 'c1' || st.cas === 'c8') && st.load === 'uni' ? `<div style="margin:12px 0">${chk('large', 'Afficher pour information l’effet membrane (grandes flèches, § 11.11) — les vérifications restent linéaires')}</div>` : ''}
         <div id="qInfo" class="muted" style="font-size:12.5px;line-height:1.6;margin-top:8px"></div>
       </div>
       <div class="fig" id="qFig"></div></div>
@@ -120,7 +120,7 @@
   function refresh() {
     const R = C.compute(st);
     const v = $('#qVerdict');
-    if (v) v.innerHTML = !R.valid ? '<span class="verdict ko">— <small>données invalides</small></span>' : `<span class="verdict ${R.max <= 1 ? 'ok' : 'ko'}">${pct(R.max)} <small>${R.max <= 1 ? 'vérifié*' : 'non vérifié'}</small></span>`;
+    if (v) v.innerHTML = !R.valid ? '<span class="verdict ko">— <small>données invalides</small></span>' : (R.status === 'oor' ? '<span class="verdict" style="background:var(--paper-2);color:var(--ink)">— <small>hors domaine</small></span>' : `<span class="verdict ${R.max <= 1 ? 'ok' : 'ko'}">${pct(R.max)} <small>${R.max <= 1 ? 'vérifié*' : 'non vérifié'}</small></span>`);
     const dd = $('#qDirty'); if (dd) dd.textContent = dirty ? 'modifié · non enregistré' : '';
     const cn = $('#qCrumb'); if (cn) cn.textContent = st.name || 'Sans nom';
     const box = $('#qResults'), info = $('#qInfo'), fig = $('#qFig');
@@ -149,7 +149,7 @@
     })();
     box.innerHTML = `${R.warnings.map((w) => `<p class="note warn">${sub(w)}</p>`).join('')}${R.info.map((w) => `<p class="note">${sub(w)}</p>`).join('')}
       <div class="kpis k3">
-        <div class="kpi ${R.max <= 1 ? 'hero' : 'bad'}"><b>Taux maximal</b><span>${pct(R.max)}</span><small>${R.max <= 1 ? 'Vérifié pour les critères traités*' : 'Plaque non vérifiée'}</small></div>
+        ${R.status === 'oor' ? `<div class="kpi bad"><b>Hors domaine</b><span>—</span><small>a/b hors du tableau de Roark : conclusion impossible (taux indicatif ${pct(R.max)})</small></div>` : `<div class="kpi ${R.max <= 1 ? 'hero' : 'bad'}"><b>Taux maximal</b><span>${pct(R.max)}</span><small>${R.max <= 1 ? 'Vérifié pour les critères traités*' : 'Plaque non vérifiée'}</small></div>`}
         <div class="kpi"><b>Contrainte ELU</b><span>${fmt(sMax, 1)} MPa</span><small>f<sub>y</sub>/γ<sub>M0</sub> = ${fmt(G.fy / G.gM0, 0)} MPa</small></div>
         <div class="kpi"><b>Flèche ELS${st.sls.length > 1 ? " — " + esc(R.slsGov.name) : ""}</b><span>${yS ? fmt(Math.abs(yS.v), 2) + ' mm' : '—'}</span><small>${yS ? `b/${Math.round(G.b / Math.abs(yS.v))} (limite b/${fmtG(R.slsGov.lim, 0)}) · y/t = ${fmt(Math.abs(yS.v) / G.t, 2)}` : 'non donnée par Roark pour ce cas'}</small></div>
       </div>
@@ -191,7 +191,7 @@
       <table><thead><tr><th>Critère</th><th>Réf.</th><th class="num">E<sub>d</sub></th><th class="num">R<sub>d</sub></th><th>Unité</th><th class="num">Taux</th><th>Statut</th></tr></thead><tbody>${chkRows}</tbody></table>
       ${R.large && s.large ? `<p style="font-size:7.6pt">Grandes flèches (§ 11.11, bords retenus dans leur plan) : flèche ELS ${R.slsCases.map((x, i) => (R.slsCases.length > 1 ? esc(x.name) + " " : "") + fmt(R.large.slsAll[i].y, 2) + " mm").join(", ")}, contrainte ELU ${fmt(R.large.uls.s, 1)} MPa (pour information).</p>` : ''}
       ${notes.length ? `<p style="font-size:7.6pt"><b>Remarques :</b> ${notes.map(sub).join(' ')}</p>` : ''}
-      <div class="rp-concl"><span>Conclusion — tôle ${fmtG(G.t, 1)} mm ${esc(s.grade)}</span><b class="${R.max <= 1 ? 'rp-ok' : 'rp-ko'}">${R.max <= 1 ? 'Vérifié' : 'Non vérifié'} — taux max. ${pct(R.max)}</b></div>
+      <div class="rp-concl"><span>Conclusion — tôle ${fmtG(G.t, 1)} mm ${esc(s.grade)}</span><b class="${R.status === 'ok' ? 'rp-ok' : 'rp-ko'}">${R.status === 'oor' ? 'Hors domaine du tableau de Roark — conclusion impossible' : (R.max <= 1 ? 'Vérifié' : 'Non vérifié') + ' — taux max. ' + pct(R.max)}</b></div>
       <p style="font-size:7.4pt;color:#555;margin-top:5pt">Formules et coefficients : W. C. Young, R. G. Budynas, Roark's Formulas for Stress and Strain, chapitre 11, tableau 11.4 (coefficients interpolés en a/b). Contrainte de flexion élastique comparée à f<sub>y</sub>/γ<sub>M0</sub> ; hors champ : réserve plastique, voilement, fatigue, assemblages.</p>
     </section>`;
   }

@@ -26,7 +26,7 @@
 <script src="js/platines-calc.js?v=3f39dd65"></script>
 <script src="js/soudure-calc.js?v=8961c627"></script>
 <script src="js/boulons-calc.js?v=60d8f97b"></script>
-<script src="js/plaques-calc.js?v=f441e812"></script>
+<script src="js/plaques-calc.js?v=aced1926"></script>
 <script>
 (function () {
   const E = FirmitasEC3, ST = FirmitasStore, D = FIRMITAS_DATA, G = FirmitasGeom, X = FIRMITAS_XLREF;
@@ -460,6 +460,23 @@
       check("… cas Q seul : taux = y(3 kPa) / (1000/300)", Rm.checks.find((x) => x.id === "defl2").r, y1 * 3 / 5 / (1000 / 300));
       check("… cas dimensionnant = Q seul (0,6·y pour une limite 2 fois plus sévère)", Rm.slsGov.name === "Q seul" ? 1 : 0, 1);
       check("Ancien format (qs, lim) repris comme cas ELS unique", PC.upgrade({ kind: "plaque", qs: 4, lim: 200 }).sls[0].lim, 200);
+    }
+    {
+      // contre-vérification externe : hors domaine, γ_2 du cas 10d, positions 10d et 11a, effet membrane facultatif
+      const P = (o) => PC.compute(PC.upgrade(Object.assign({ kind: "plaque", cas: "c1", load: "uni", a: 1500, b: 1000, t: 10, grade: "S235", nu: 0.3, qu: 5, sls: [{ q: 5, lim: 150 }] }, o)));
+      check("a/b = 0,8 < 1 (cas 1a) : hors domaine, pas de verdict", P({ a: 800 }).status === "oor" ? 1 : 0, 1);
+      check("a/b = 5 dans le cas 3a (tableau jusqu'à 4) : hors domaine", P({ cas: "c3", a: 5000 }).status === "oor" ? 1 : 0, 1);
+      check("… même avec un taux faible, la synthèse Projets ne donne pas de taux", PC.summary(PC.upgrade({ kind: "plaque", cas: "c3", load: "uni", a: 5000, b: 1000, t: 30, qu: 1, sls: [{ q: 1, lim: 150 }] })).max === null ? 1 : 0, 1);
+      check("a/b = 1,5 dans le tableau : verdict normal", P({}).status === "ok" ? 1 : 0, 1);
+      const t10 = (a) => P({ cas: "c10", load: "tri", a, b: 1000 }).uls;
+      check("10d, a/b = 1,5 : σ_a et réaction latérales en z = b (Roark : a > b)", t10(1500)[1].pos[1] + t10(1500)[3].pos[1], 2);
+      check("10d, a/b = 0,75 : en z = 0,4·b (a < b)", t10(750)[1].pos[1], 0.4);
+      check("10d, a/b = 1,5 : réaction γ_2 signalée non exploitable", t10(1500)[3].doubt ? 1 : 0, 1);
+      check("10d, a/b = 3 : γ_2 hors de l'intervalle douteux", t10(3000)[3].doubt ? 0 : 1, 1);
+      check("11a, a/b = 0,4 ≤ 0,5 : σ_a sur le côté gauche en z = 0,8·b", P({ cas: "c11", a: 400, b: 1000 }).uls[1].pos[1], 0.8);
+      check("11a, a/b = 0,75 > 0,5 : en z = b", P({ cas: "c11", a: 750, b: 1000 }).uls[1].pos[1], 1);
+      check("Effet membrane non calculé par défaut (calcul linéaire seul)", PC.compute(PC.upgrade({ kind: "plaque" })).large === undefined ? 1 : 0, 1);
+      check("… calculé seulement sur demande, pour information", P({ large: true }).large ? 1 : 0, 1);
     }
     // bandes : formules de poutre
     const sb = PC.compute(PC.upgrade({ kind: 'plaque', cas: 'b-ff', load: 'uni', a: 2000, b: 800, t: 8, grade: 'S355', nu: 0.3, qu: 10, qs: 10 }));

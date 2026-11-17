@@ -98,16 +98,16 @@
           out: [{ label: 'σ_b au milieu du côté encastré opposé au bord libre', kind: 's', coef: 'b1', sign: -1, pos: [0, 0] }, { label: 'σ_a au milieu du bord libre', kind: 's', coef: 'b2', pos: [0, 1] },
             { label: 'σ_a aux extrémités du bord libre', kind: 's', coef: 'b3', sign: -1, pos: [-0.5, 1] }, { label: 'Réaction au milieu du côté encastré (z = 0)', kind: 'R', coef: 'g1', pos: [0, 0] },
             { label: 'Réaction aux extrémités du bord libre', kind: 'R', coef: 'g2', pos: [0.5, 1] }] },
-        tri: { label: 'Pression décroissante de l\'encastrement au bord libre', roark: '10d', nu: 0.2, r: [.25, .5, .75, 1, 1.5, 2, 3], note: 'γ_2 à a/b = 1,5 : 0,106, valeur telle que publiée par Roark (vraisemblablement une coquille)',
+        tri: { label: 'Pression décroissante de l\'encastrement au bord libre', roark: '10d', nu: 0.2, r: [.25, .5, .75, 1, 1.5, 2, 3], doubt: { coef: "g2", lo: 1, hi: 2, text: "γ_2 interpolé avec la valeur 0,106 publiée par Roark à a/b = 1,5 (vraisemblablement une coquille : 0,242 à 1 et 0,199 à 2) : réaction sur les côtés latéraux non exploitable entre a/b = 1 et 2" },
           c: { b1: [.018, .064, .120, .195, .351, .507, .758], b2: [.019, .068, .125, .166, .244, .387, .514], g1: [.106, .195, .265, .324, .406, .458, .505], g2: [.075, .151, .211, .242, .106, .199, .313] },
-          out: [{ label: 'σ_b au milieu du côté encastré (z = 0)', kind: 's', coef: 'b1', sign: -1, pos: [0, 0] }, { label: 'σ_a sur les côtés latéraux', kind: 's', coef: 'b2', sign: -1, pos: [-0.5, 0.7] },
-            { label: 'Réaction au milieu du côté encastré (z = 0)', kind: 'R', coef: 'g1', pos: [0, 0] }, { label: 'Réaction sur les côtés latéraux', kind: 'R', coef: 'g2', pos: [0.5, 0.7] }] } } },
+          out: [{ label: 'σ_b au milieu du côté encastré (z = 0)', kind: 's', coef: 'b1', sign: -1, pos: [0, 0] }, { label: "σ_a sur les côtés latéraux", lab: (r) => `σ_a sur les côtés latéraux (z = ${r > 1 ? "b" : "0,4 b"})`, kind: "s", coef: "b2", sign: -1, pos: [-0.5, 1], at: (r) => [-0.5, r > 1 ? 1 : 0.4] },
+            { label: 'Réaction au milieu du côté encastré (z = 0)', kind: 'R', coef: 'g1', pos: [0, 0] }, { label: "Réaction sur les côtés latéraux", lab: (r) => `Réaction sur les côtés latéraux (z = ${r > 1 ? "b" : "0,4 b"})`, kind: "R", coef: "g2", pos: [0.5, 1], at: (r) => [0.5, r > 1 ? 1 : 0.4] }] } } },
     // ------------------------------------------------ 2 côtés
     { id: 'c11', group: '2 côtés', label: '2 côtés adjacents encastrés, 2 bords libres', roark: '11', edges: E4('fx', 'fr', 'fx', 'fr'), ab: 'a : côté encastré bas (z = 0) ; b : côté encastré gauche (x = 0)', min: 0.125, swap: true,
       loads: { uni: { label: 'Pression uniforme', roark: '11a', nu: 0.2, r: [.125, .25, .375, .5, .75, 1],
         c: { b1: [.050, .182, .353, .631, 1.246, 1.769], b2: [.047, .188, .398, .632, 1.186, 1.769], g1: [.312, .572, .671, .874, 1.129, 1.183], g2: [.127, .264, .413, .557, .829, 1.183] },
-        out: [{ label: 'σ_b à l\'extrémité libre du côté encastré bas (x = a, z = 0)', kind: 's', coef: 'b1', sign: -1, pos: [0.5, 0] }, { label: 'σ_a à l\'extrémité libre du côté encastré gauche', kind: 's', coef: 'b2', sign: -1, pos: [-0.5, 1] },
-          { label: 'Réaction au même point (côté bas)', kind: 'R', coef: 'g1', pos: [0.5, 0] }, { label: 'Réaction au même point (côté gauche)', kind: 'R', coef: 'g2', pos: [-0.5, 1] }] } } },
+        out: [{ label: 'σ_b à l\'extrémité libre du côté encastré bas (x = a, z = 0)', kind: 's', coef: 'b1', sign: -1, pos: [0.5, 0] }, { label: 'σ_a sur le côté encastré gauche', lab: (r) => `σ_a sur le côté encastré gauche (z = ${r > 0.5 ? 'b, extrémité libre' : '0,8 b'})`, kind: 's', coef: 'b2', sign: -1, pos: [-0.5, 1], at: (r) => [-0.5, r > 0.5 ? 1 : 0.8] },
+          { label: 'Réaction au même point (côté bas)', kind: 'R', coef: 'g1', pos: [0.5, 0] }, { label: "Réaction au même point (côté gauche)", kind: "R", coef: "g2", pos: [-0.5, 1], at: (r) => [-0.5, r > 0.5 ? 1 : 0.8] }] } } },
     { id: 'b-ss', group: '2 côtés', label: '2 côtés opposés appuyés, 2 bords libres', roark: 'bande', strip: true, edges: E4('ss', 'ss', 'fr', 'fr'), ab: 'b : portée entre les appuis ; a : longueur des bords libres', min: 0,
       loads: { uni: { label: 'Pression uniforme', roark: 'flexion cylindrique', nu: null, strip: (nu) => ({ b: 0.75, a: 5 * 12 * (1 - nu * nu) / 384, g: 0.5 }),
         out: [{ label: 'Contrainte au milieu de la portée', kind: 's', coef: 'b', pos: [0, 0.5] }, { label: 'Flèche maximale', kind: 'y', coef: 'a', pos: [0, 0.5] }, { label: 'Réaction sur chaque appui', kind: 'R', coef: 'g', pos: [0, 0] }] } } },
@@ -181,7 +181,12 @@
       else if (o.kind === 'sW') { v = 3 * W / (2 * Math.PI * t * t) * ((1 + nu) * Math.log(2 * b / (Math.PI * g.rop)) + k); unit = 'MPa'; formula = '3W/(2π·t²)·[(1+ν)·ln(2b/(π·r′_o)) + β]'; }
       else if (o.kind === 'sWe') { v = sg * k * W / (t * t); unit = 'MPa'; formula = '−β_2·W/t²'; }
       else if (o.kind === 'yW') { v = k * W * b * b / (E * t ** 3); unit = 'mm'; formula = 'α·W·b²/(E·t³)'; }
-      return Object.assign({}, o, { k, v, unit, formula: formula.replace(/β_([0-9])/g, 'β_$1').replace(/γ_([0-9])/g, 'γ_$1') });
+      // position et libellé selon a/b (Roark : point de calcul variable pour certains cas)
+      const r = a / b, extra = {};
+      if (o.at) extra.pos = o.at(r);
+      if (o.lab) extra.label = o.lab(r);
+      if (L.doubt && L.doubt.coef === o.coef && !c.strip && r > L.doubt.lo && r < L.doubt.hi) extra.doubt = L.doubt.text;
+      return Object.assign({}, o, extra, { k, v, unit, formula: formula.replace(/β_([0-9])/g, 'β_$1').replace(/γ_([0-9])/g, 'γ_$1') });
     });
     return { cs, out };
   }
@@ -189,7 +194,7 @@
   function defaultState() {
     return {
       v: 1, kind: 'plaque', name: 'Plaque T1', cas: 'c1', load: 'uni',
-      a: 1500, b: 1000, t: 10, grade: "S235", nu: 0.3, large: true,
+      a: 1500, b: 1000, t: 10, grade: "S235", nu: 0.3, large: false,
       gam: { M0: 1.0 },
       qu: 7.5, Wu: 15, ro: 50,
       // cas ELS : charge (q en kPa ou W en kN selon le type de charge) et flèche limite b/lim, un critère par cas
@@ -239,10 +244,14 @@
     const U = evalLoad(c, L, g, qu, Wu);
     R.slsCases = SL.map((x) => Object.assign(x, { out: evalLoad(c, L, g, x.q, x.W).out }));
     R.uls = U.out; R.cs = U.cs;
+    // hors domaine du tableau : coefficients non définis pour cette géométrie → aucune conclusion (ni « vérifié » ni « non vérifié »)
+    R.oor = false;
     if (!c.strip) {
-      if (Object.values(U.cs).some((x) => x.clamp)) R.warnings.push(`a/b = ${ratio.toFixed(2)} sort du tableau de Roark (${L.r[0]} à ${L.r[L.r.length - 1] === INF ? '∞' : L.r[L.r.length - 1]}) : coefficients pris à la borne.`);
+      if (Object.values(U.cs).some((x) => x.clamp)) { R.oor = true; R.warnings.push(`Hors domaine : a/b = ${ratio.toFixed(2).replace('.', ',')} sort du tableau de Roark (${String(L.r[0]).replace('.', ',')} à ${L.r[L.r.length - 1] === INF ? '∞' : String(L.r[L.r.length - 1]).replace('.', ',')}). Les valeurs affichées utilisent les coefficients de la borne, à titre indicatif seulement : conclusion impossible.`); }
       if (c.min >= 1 && num(s.a) < num(s.b)) R.warnings.push('Pour ce cas, a désigne le grand côté : saisir a ≥ b.');
     }
+    const dbt = [...new Set(U.out.filter((o) => o.doubt).map((o) => o.doubt))];
+    dbt.forEach((x) => R.warnings.push(x + '.'));
     if (swapped) R.info.push('a > b : côtés permutés pour rester dans le tableau (cas symétrique).');
     if (L.infNote) R.info.push(L.infNote + '.');
     if (L.note) R.info.push(L.note + '.');
@@ -258,23 +267,26 @@
     const yS = R.slsGov.y;
     if (!yS) R.info.push('Roark ne donne pas la flèche pour ce cas : flèche non vérifiée.');
     // grandes flèches (4 appuis simples ou 4 encastrements, pression uniforme)
-    if ((c.id === 'c1' || c.id === 'c8') && s.load === 'uni') {
+    // (facultatif, pour information : les vérifications restent celles de la théorie linéaire)
+    if (s.large && (c.id === 'c1' || c.id === 'c8') && s.load === 'uni') {
       const tabs = LARGE[c.id === 'c1' ? 'ss' : 'fx'];
       const tab = ratio >= tabs[tabs.length - 1].r ? tabs[tabs.length - 1] : tabs.reduce((m, x) => (Math.abs(x.r - ratio) < Math.abs(m.r - ratio) ? x : m));
       const al = U.cs.a.v, be = Object.keys(U.cs).filter((k) => k[0] === 'b').reduce((m, k) => Math.max(m, Math.abs(U.cs[k].v)), 0);
       const one = (qkPa) => { const Q = qkPa / 1000 * b ** 4 / (E * t ** 4), L2 = largeDefl(tab, al, be, Q); return { Q, y: L2.w * t, s: L2.s * E * t * t / (b * b), out: Q > LD_Q[LD_Q.length - 1] }; };
       R.large = { uls: one(qu), sls: one(R.slsGov.q), slsAll: R.slsCases.map((x) => one(x.q)), where: tab.where, table: tab.label || String(tab.r).replace('.', ',') };
-      if (s.large && R.large.sls.y / t > 0.5) R.info.push(`Flèche ELS supérieure à t/2 : l'effet membrane réduit la flèche à ${R.large.sls.y.toFixed(1)} mm et la contrainte ELU à ${R.large.uls.s.toFixed(0)} MPa si les bords sont retenus dans leur plan (§ 11.11).`);
-    } else if (yS && Math.abs(yS.v) > 0.5 * t) R.info.push('Flèche supérieure à t/2 : l\'effet membrane devient significatif, la théorie linéaire surestime flèche et contraintes (§ 11.11).');
+      if (R.large.sls.y / t > 0.5) R.info.push(`Flèche ELS supérieure à t/2 : l'effet membrane réduit la flèche à ${R.large.sls.y.toFixed(1)} mm et la contrainte ELU à ${R.large.uls.s.toFixed(0)} MPa si les bords sont retenus dans leur plan (§ 11.11).`);
+    } else if (yS && Math.abs(yS.v) > 0.5 * t) R.info.push('Flèche supérieure à t/2 : la théorie linéaire retenue surestime flèche et contraintes (effet membrane négligé, § 11.11), ce qui va dans le sens de la sécurité.');
     R.max = R.checks.reduce((m, x) => Math.max(m, x.r), 0);
     R.gov = R.checks.reduce((gv, x) => (!gv || x.r > gv.r ? x : gv), null);
+    // verdict à trois états : « ok » (vérifié), « ko » (non vérifié), « oor » (hors domaine — conclusion impossible)
+    R.status = R.oor ? 'oor' : R.max <= 1 ? 'ok' : 'ko';
     return R;
   }
 
   function summary(st) {
     try {
       const R = compute(st), c = CASE[st.cas];
-      return { type: 'Plaque', sec: `${num(st.a)} × ${num(st.b)} × ${num(st.t)} mm ${st.grade} · ${c ? c.label : ''}`, gov: R.gov ? R.gov.label.replace(/\s*\(.*$/, '') : '', max: R.valid ? R.max : null };
+      return { type: 'Plaque', sec: `${num(st.a)} × ${num(st.b)} × ${num(st.t)} mm ${st.grade} · ${c ? c.label : ''}`, gov: R.oor ? 'Hors domaine du tableau de Roark' : R.gov ? R.gov.label.replace(/\s*\(.*$/, '') : '', max: R.valid && !R.oor ? R.max : null };
     } catch (e) { return null; }
   }
 
