@@ -101,5 +101,57 @@
     });
   }
 
-  window.FirmitasGeom = { iSection, ipn, rhs, chs, RHO };
+  // ---------- cornières (EN 10056-1) ----------
+  /* Aile h selon z (verticale), aile b selon y (horizontale), épaisseur t, congé de pied r1 (arrondis d'extrémité
+     négligés, < 0,5 % de l'aire). Caractéristiques calculées dans les axes géométriques puis principaux :
+     u = axe fort, v = axe faible. Pour le moteur de vérification, y ≡ u et z ≡ v (Iy = Iu, Iz = Iv, W_el minimaux).
+     Centre de cisaillement à l'intersection des feuillets moyens des ailes. */
+  function angle(h, b, t, r1) {
+    r1 = r1 || 0;
+    const parts = [
+      { A: t * h, y: t / 2, z: h / 2, Iy: t * h ** 3 / 12, Iz: h * t ** 3 / 12, Pyz: 0 },               // aile h
+      { A: (b - t) * t, y: t + (b - t) / 2, z: t / 2, Iy: (b - t) * t ** 3 / 12, Iz: t * (b - t) ** 3 / 12, Pyz: 0 }   // aile b
+    ];
+    if (r1 > 0) {
+      const f = fillet(r1);
+      parts.push({ A: f.A, y: t + f.c, z: t + f.c, Iy: f.I, Iz: f.I, Pyz: -0.004438 * r1 ** 4 });          // congé de pied
+      // arrondis d'extrémité des ailes r2 = r1/2 (EN 10056-1) : matière retirée à l'angle intérieur de chaque bout d'aile
+      const r2 = r1 / 2, g = fillet(r2);
+      if (r2 < t) {
+        parts.push({ A: -g.A, y: t - g.c, z: h - g.c, Iy: -g.I, Iz: -g.I, Pyz: 0.004438 * r2 ** 4 });
+        parts.push({ A: -g.A, y: b - g.c, z: t - g.c, Iy: -g.I, Iz: -g.I, Pyz: 0.004438 * r2 ** 4 });
+      }
+    }
+    const A = parts.reduce((s, p) => s + p.A, 0);
+    const ey = parts.reduce((s, p) => s + p.A * p.y, 0) / A, ez = parts.reduce((s, p) => s + p.A * p.z, 0) / A;
+    // moments du second ordre au centre de gravité : Szz = ∫z² (= I_y), Syy = ∫y² (= I_z), Syz = ∫y·z
+    const Szz = parts.reduce((s, p) => s + p.Iy + p.A * (p.z - ez) ** 2, 0);
+    const Syy = parts.reduce((s, p) => s + p.Iz + p.A * (p.y - ey) ** 2, 0);
+    const Syz = parts.reduce((s, p) => s + p.Pyz + p.A * (p.y - ey) * (p.z - ez), 0);
+    // axes principaux : I_axe = nᵀ·M·n (n normale à l'axe), M = [[Syy, Syz], [Syz, Szz]]
+    const m = (Syy + Szz) / 2, d = Math.sqrt(((Syy - Szz) / 2) ** 2 + Syz ** 2);
+    const Iu = m + d, Iv = m - d;
+    const nOf = (lam) => { const v = Math.abs(Syz) > 1e-12 ? [Syz, lam - Syy] : (Syy >= Szz ? (lam === Iu ? [1, 0] : [0, 1]) : (lam === Iu ? [0, 1] : [1, 0])); const l = Math.hypot(v[0], v[1]); return [v[0] / l, v[1] / l]; };
+    const nU = nOf(Iu), nV = nOf(Iv);                     // normales aux axes u et v (= directions des axes v et u)
+    const pts = [[0, 0], [b, 0], [b, t], [t, h], [0, h]].map(([y, z]) => [y - ey, z - ez]);
+    const dist = (n) => Math.max(...pts.map((p) => Math.abs(p[0] * n[0] + p[1] * n[1])));
+    const Welu = Iu / dist(nU), Welv = Iv / dist(nV);
+    // centre de cisaillement (talon des feuillets moyens) dans les axes principaux : u0 le long de l'axe u, v0 le long de v
+    const s0 = [t / 2 - ey, t / 2 - ez];
+    const eU = nV, eV = nU;                               // direction de l'axe u = normale à l'axe v
+    const u0 = s0[0] * eU[0] + s0[1] * eU[1], v0 = s0[0] * eV[0] + s0[1] * eV[1];
+    const It = (h + b - t) * t ** 3 / 3;
+    const hp = h - t / 2, bp = b - t / 2, Iw = t ** 3 * (hp ** 3 + bp ** 3) / 36;
+    const alpha = (() => { let a = Math.atan2(nV[1], nV[0]) * 180 / PI; while (a > 90) a -= 180; while (a <= -90) a += 180; return a; })();   // inclinaison de l'axe u sur l'axe y (aile b), ramenée dans ]−90° ; 90°]
+    const f = (x) => String(x).replace('.', ',');
+    const Av = Math.min(h, b) * t;                       // aire de cisaillement prudente (aile la plus courte)
+    return finish({
+      type: 'L', name: `L ${f(h)} × ${f(b)} × ${f(t)}`, h, b, t, r: r1, tw: t, tf: t,
+      A, Iy: Iu, Iz: Iv, Wely: Welu, Welz: Welv, Wply: Welu, Wplz: Welv, It, Iw,
+      Avz: Av, Avy: Av, hw: h - t, cw: h - t, cf: b - t,
+      geo: { ey, ez, Iyg: Szz, Izg: Syy, Iyzg: Syz, alpha, u0, v0, Iu, Iv }
+    });
+  }
+
+  window.FirmitasGeom = { iSection, ipn, rhs, chs, angle, RHO };
 })();

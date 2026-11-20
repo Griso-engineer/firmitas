@@ -17,7 +17,7 @@
       N: { G: '', Q: '' },
       gam: { Gsup: 1.35, Ginf: 1, Q: 1.5 },
       direct: { N: '', Vz: '', Vy: '', My: ['', '', ''], Mz: ['', '', ''], load: 'U', wTot: '', wQ: '' },
-      stab: { Lcry: 6, Lcrz: 6, LLT: 3, link: { Lcry: true, Lcrz: true, LLT: false }, k: 1, kw: 1, zgMode: 'top', zg: '', C1mode: 'auto', C1: 1.13, C2: 0.45, restrained: false, sway: false },
+      stab: { Lcry: 6, Lcrz: 6, LLT: 3, link: { Lcry: true, Lcrz: true, LLT: false }, k: 1, kw: 1, zgMode: 'top', zg: '', C1mode: 'auto', C1: 1.13, C2: 0.45, restrained: false, sway: false, bb12: false },
       sls: { preset: 'an-plancher', tot: 200, q: 300, Lref: '', fmin: '', psi2: 0.3 }
     };
   }

@@ -68,6 +68,15 @@
     const any = hasMy || hasMz || comp;
     const psi = clamp(2 * N / (S.A * fy) - 1, -3, 1);
     let web, flange;
+    if (S.type === 'L') {
+      // cornières (tableau 5.2, feuille 3) : classe 3 si h/t ≤ 15ε et (b + h)/(2t) ≤ 11,5ε, sinon classe 4 ;
+      // résistance élastique dans tous les cas (classe 3 au mieux, y compris en flexion)
+      const c1 = S.h / S.t, c2 = (S.b + S.h) / (2 * S.t), l1 = 15 * eps, l2 = 11.5 * eps;
+      const k = c1 <= l1 && c2 <= l2 ? 3 : 4, mode = any ? (comp ? 'comp' : 'bend') : 'none';
+      web = { ct: c1, mode, cls: k === 4 && !(c1 <= l1) ? 4 : 3, lim: [l1, l1, l1], angle: true };
+      flange = { ct: c2, mode, cls: k === 4 && !(c2 <= l2) ? 4 : 3, lim: [l2, l2, l2], angle: true };
+      return { cls: k, web, flange, eps };
+    }
     if (S.type === 'CHS') {
       const lim = [50 * eps * eps, 70 * eps * eps, 90 * eps * eps], ct = S.d / S.t;
       web = { ct, mode: any ? 'tube' : 'none', cls: any ? clsOf(ct, lim) : 1, lim };
@@ -99,6 +108,11 @@
     const eps = Math.sqrt(235 / fy);
     const rin = (ct) => { const lp = ct / (28.4 * eps * 2); return lp <= 0.673 ? 1 : Math.min(1, (lp - 0.22) / (lp * lp)); };
     const rout = (ct) => { const lp = ct / (28.4 * eps * Math.sqrt(0.43)); return lp <= 0.748 ? 1 : Math.min(1, (lp - 0.188) / (lp * lp)); };
+    if (S.type === 'L') {
+      // ailes en console (EN 1993-1-5 tableau 4.2, ψ = 1, k_σ = 0,43), largeur c = aile − t
+      const rh = rout((S.h - S.t) / S.t), rb = rout((S.b - S.t) / S.t);
+      return { A: S.A - (1 - rh) * (S.h - S.t) * S.t - (1 - rb) * (S.b - S.t) * S.t, rw: rh, rf: rb };
+    }
     if (S.type === 'I') {
       const rw = rin(S.cw / S.tw), rf = rout(S.cf / S.tf);
       return { A: S.A - (1 - rw) * S.cw * S.tw - 4 * (1 - rf) * S.cf * S.tf, rw, rf };
@@ -112,7 +126,7 @@
     const cN = classify(S, fy, 1e-3 * S.A * fy, 0, 0);
     const cMy = classify(S, fy, 0, S.Wely * fy, 0), cMz = classify(S, fy, 0, 0, S.Welz * fy);
     const ae = cN.cls === 4 ? aeff(S, fy) : null;
-    return { fy, eps: cN.eps, cN, cMy, cMz, Aeff: ae ? ae.A : S.A, ae, Ac: cN.cls === 4 && ae ? ae.A : S.A };
+    return { fy, eps: cN.eps, cN, cMy, cMz, Aeff: ae ? ae.A : S.A, ae, Ac: cN.cls === 4 && ae ? ae.A : S.A, Wfac: S.type === 'L' && ae ? Math.min(ae.rw, ae.rf) : 1 };
   }
 
   // ======================================================================
@@ -186,7 +200,8 @@
       if (My > 0 && Mz <= 0) o.r.NMV = n >= 1 ? n : q(My, MNy);      // flexion simple : taux linéaire, plus lisible
       if (Mz > 0 && My <= 0) o.r.NMV = n >= 1 ? n : q(Mz, MNz);
     } else {
-      const MyV = S.Wely * fyd * (1 - rz), MzV = S.Welz * fyd * (1 - ry);
+      const wf = cls === 4 && P.Wfac ? P.Wfac : 1;                     // cornières de classe 4 : W_el × ρ (approximation)
+      const MyV = S.Wely * wf * fyd * (1 - rz), MzV = S.Welz * wf * fyd * (1 - ry);
       const q = (M, R) => (M <= 0 ? 0 : R > 0 ? M / R : Infinity);
       Object.assign(o, { MyRd: MyV, MzRd: MzV, n: aN / Npl });
       o.r.My = q(My, MyV); o.r.Mz = q(Mz, MzV);
@@ -201,6 +216,7 @@
   // ======================================================================
   function curves(S, grade) {
     const hi = grade === 'S460';
+    if (S.type === 'L') return { y: 'b', z: 'b' };                 // tableau 6.2 : cornières, courbe b
     if (S.type === 'I') {
       if (S.fab === 'welded') return S.tf <= 40 ? { y: 'b', z: 'c' } : { y: 'c', z: 'd' };
       if (S.h / S.b > 1.2) return S.tf <= 40 ? { y: hi ? 'a0' : 'a', z: hi ? 'a0' : 'b' } : { y: hi ? 'a' : 'b', z: hi ? 'a' : 'c' };
@@ -257,16 +273,44 @@
     const cls = cl.cls;
     const Ac = Nc > 0 && cls === 4 ? P.Ac : S.A;
     const NRk = Ac * fy;
-    const Wy = cls <= 2 ? S.Wply : S.Wely, Wz = cls <= 2 ? S.Wplz : S.Welz;
+    const wf = cls === 4 && P.Wfac ? P.Wfac : 1;
+    const Wy = cls <= 2 ? S.Wply : S.Wely * wf, Wz = cls <= 2 ? S.Wplz : S.Welz * wf;
     const MyRk = Wy * fy, MzRk = Wz * fy;
     const cv = curves(S, grade);
-    const ax = (I, Lcr, c) => {
+    // cornière de treillis attachée par une aile (annexe BB.1.2) : λ̄_eff,v = 0,35 + 0,7·λ̄_v ; λ̄_eff,u = 0,50 + 0,7·λ̄_u
+    const bb = S.type === 'L' && !!stab.bb12;
+    const ax = (I, Lcr, c, bbk) => {
       const Ncr = Lcr > 0 ? PI * PI * E * I / (Lcr * Lcr) : Infinity;
-      const lam = Lcr > 0 ? Math.sqrt(Ac * fy / Ncr) : 0;
+      const lam0 = Lcr > 0 ? Math.sqrt(Ac * fy / Ncr) : 0;
+      const lam = bb && Lcr > 0 ? bbk + 0.7 * lam0 : lam0;
       const x = chi(lam, D.ALPHA[c]);
-      return { Lcr, Ncr, lam, curve: c, alpha: D.ALPHA[c], phi: x.phi, chi: x.chi, NbRd: x.chi * Ac * fy / g1 };
+      return { Lcr, Ncr, lam, lam0: bb ? lam0 : undefined, curve: c, alpha: D.ALPHA[c], phi: x.phi, chi: x.chi, NbRd: x.chi * Ac * fy / g1 };
     };
-    const y = ax(S.Iy, stab.Lcry, cv.y), z = ax(S.Iz, stab.Lcrz, cv.z);
+    const y = ax(S.Iy, stab.Lcry, cv.y, 0.5), z = ax(S.Iz, stab.Lcrz, cv.z, 0.35);
+    // cornières : flambement par torsion et flexion-torsion (6.3.1.4), centre de cisaillement excentré (u0, v0) ;
+    // N_cr,TF = plus petite racine de (N − N_u)(N − N_v)(N − N_T) − N²(N − N_u)·v0²/i0² − N²(N − N_v)·u0²/i0² = 0
+    let tf = null;
+    if (S.type === 'L') {
+      const g = S.geo, LT = stab.Lcrz;
+      const Nu = y.Ncr, Nv = z.Ncr, i02 = (S.Iy + S.Iz) / S.A + g.u0 * g.u0 + g.v0 * g.v0;
+      const NT = LT > 0 ? (Gs * S.It + PI * PI * E * S.Iw / (LT * LT)) / i02 : Infinity;
+      let Ncr;
+      if (Math.abs(g.v0) < 1e-6 * Math.sqrt(i02)) {
+        // ailes égales (u axe de symétrie) : le mode v reste purement flexionnel ; flexion-torsion = couplage u–torsion
+        // (EN 1993-1-3 (6.35)) : N = [(N_u + N_T) − √((N_u + N_T)² − 4β·N_u·N_T)]/(2β), β = 1 − u0²/i0²
+        const be = 1 - g.u0 * g.u0 / i02;
+        Ncr = Number.isFinite(NT) && Number.isFinite(Nu) ? ((Nu + NT) - Math.sqrt((Nu + NT) ** 2 - 4 * be * Nu * NT)) / (2 * be) : Math.min(Nu, NT);
+      } else {
+        const f = (N) => (N - Nu) * (N - Nv) * (N - NT) - N * N * (N - Nu) * g.v0 * g.v0 / i02 - N * N * (N - Nv) * g.u0 * g.u0 / i02;
+        let lo = 0, hi = Math.min(Nu, Nv, NT);
+        if (Number.isFinite(hi)) { for (let i = 0; i < 200; i++) { const mid = (lo + hi) / 2; if (f(mid) < 0) lo = mid; else hi = mid; } }
+        Ncr = Number.isFinite(hi) ? (lo + hi) / 2 : Infinity;
+      }
+      const lam = Ncr < Infinity ? Math.sqrt(Ac * fy / Ncr) : 0, x = chi(lam, D.ALPHA[cv.z]);
+      // retenu seulement s'il est plus critique que la flexion pure ; avec BB.1.2, non cumulé (l'annexe couvre le flambement de la cornière de treillis)
+      const gov = !bb && Ncr < 0.995 * Math.min(Nu, Nv);
+      tf = { Lcr: LT, NT, Ncr, lam, curve: cv.z, alpha: D.ALPHA[cv.z], phi: x.phi, chi: x.chi, NbRd: x.chi * Ac * fy / g1, i02, u0: g.u0, v0: g.v0, gov };
+    }
 
     // --- déversement
     const lt = { L: stab.LLT, k: stab.k, kw: stab.kw, zg: stab.zg };
@@ -297,7 +341,8 @@
     const mz = diag.Mz;
     const cmz = sway ? { cm: 0.9, kind: 'nœuds déplaçables' } : cmB3(mz[0], mz[2], mz[4], diag.loadZ, !diag.loadZ);
     const cmLT = cmy;
-    const ny = Nc / (y.chi * NRk / g1), nz = Nc / (z.chi * NRk / g1);
+    const chiZ = tf && tf.gov ? Math.min(z.chi, tf.chi) : z.chi;                 // cornières : χ_TF si plus défavorable
+    const ny = Nc / (y.chi * NRk / g1), nz = Nc / (chiZ * NRk / g1);
     const ly = Math.min(y.lam, 1), lz = Math.min(z.lam, 1);
     let kyy, kzz, kyz, kzy;
     if (cls <= 2) {
@@ -317,11 +362,11 @@
     }
     const My = Math.abs(diag.Mymax), Mz = Math.abs(diag.Mzmax);
     const r = {};
-    r.Fb = Nc > 0 ? Nc / Math.min(y.NbRd, z.NbRd) : 0;
+    r.Fb = Nc > 0 ? Nc / Math.min(y.NbRd, z.NbRd, tf && tf.gov ? tf.NbRd : Infinity) : 0;
     r.LT = My / lt.MbRd;
     r.I1 = ny + kyy * My / (lt.chi * MyRk / g1) + kyz * Mz / (MzRk / g1);
     r.I2 = nz + kzy * My / (lt.chi * MyRk / g1) + kzz * Mz / (MzRk / g1);
-    return { cl, cls, NRk, MyRk, MzRk, y, z, lt, sens, cmy, cmz, cmLT, ny, nz, kyy, kyz, kzy, kzz, My, Mz, N: diag.N, r };
+    return { cl, cls, NRk, MyRk, MzRk, y, z, tf, bb, lt, sens, cmy, cmz, cmLT, ny, nz, kyy, kyz, kzy, kzz, My, Mz, N: diag.N, r };
   }
 
   // ======================================================================
@@ -385,10 +430,11 @@
       L: L * 1000, bc: s.bc, Lcry, Lcrz, LLT, k: num(sb.k, 1) || 1, kw: num(sb.kw, 1) || 1, zg,
       C1: sb.C1mode === 'manual' && num(sb.C1) > 0 ? num(sb.C1) : null,
       C2: sb.C1mode === 'manual' ? num(sb.C2) : null,
-      restrained: !!sb.restrained, sway: !!sb.sway
+      restrained: !!sb.restrained, sway: !!sb.sway, bb12: !!sb.bb12
     };
     R.stab = stab;
-    if (P.cMy.cls === 4 || (S.type === 'CHS' && P.cN.cls === 4)) {
+    if (S.type === 'L' && P.cN.cls === 4) R.warnings.push(`Cornière de classe 4 (h/t = ${(S.h / S.t).toFixed(1).replace('.', ',')}, (b + h)/2t = ${((S.b + S.h) / (2 * S.t)).toFixed(1).replace('.', ',')} pour 15ε = ${(15 * P.eps).toFixed(1).replace('.', ',')} et 11,5ε = ${(11.5 * P.eps).toFixed(1).replace('.', ',')}) : aire efficace A_eff = ${(P.Aeff / 100).toFixed(2).replace('.', ',')} cm² en compression (EN 1993-1-5, ailes en console) ; en flexion, W_el réduit du même coefficient ρ = ${P.Wfac.toFixed(3).replace('.', ',')} (approximation).`);
+    if (S.type !== 'L' && (P.cMy.cls === 4 || (S.type === 'CHS' && P.cN.cls === 4))) {
       R.valid = false;
       R.warnings.push(S.type === 'CHS' ? 'Tube rond de classe 4 (d/t > 90ε²) : hors du champ de l\'EN 1993-1-1 (voir EN 1993-1-6).' : 'Section de classe 4 en flexion simple : module efficace W_eff non calculé par Firmitas (EN 1993-1-5).');
     }

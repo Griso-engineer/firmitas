@@ -60,6 +60,15 @@
     const W = S.b * k, H = S.h * k, x0 = (size - W) / 2, y0 = (size - H) / 2, cx = size / 2, cy = size / 2;
     let shape;
     const st = 'fill="#d9dee6" stroke="#111" stroke-width="1.1"';
+    if (S.type === 'L') {
+      // talon en bas à gauche (aile h verticale, aile b horizontale) ; axes principaux u (fort) et v (faible) au centre de gravité
+      const t = Math.max(S.t * k, 1), X = (y) => x0 + y * k, Y = (z) => y0 + H - z * k;
+      const gx = X(S.geo.ey), gy = Y(S.geo.ez), a = S.geo.alpha * Math.PI / 180, Lx = 0.62 * size;
+      const ax = (ang, lab, bold) => { const c = Math.cos(ang), s = Math.sin(ang); return `<line x1="${gx - c * Lx / 2}" y1="${gy + s * Lx / 2}" x2="${gx + c * Lx / 2}" y2="${gy - s * Lx / 2}" stroke="#111" stroke-width="${bold ? 0.8 : 0.6}" stroke-dasharray="4 2 1 2"/><text x="${gx + c * Lx / 2 + 2}" y="${gy - s * Lx / 2 + 4}">${lab}</text>`; };
+      return `<svg width="${size + 14}" height="${size}" viewBox="0 0 ${size + 14} ${size}" aria-hidden="true">
+        <path d="M${x0},${y0}h${t}V${y0 + H - t}H${x0 + W}v${t}H${x0}Z" ${st}/>
+        ${ax(a, 'u', true)}${ax(a + Math.PI / 2, 'v', false)}<circle cx="${gx}" cy="${gy}" r="1.8" fill="#111"/></svg>`;
+    }
     if (S.type === 'CHS') {
       const ro = S.d / 2 * k, ri = (S.d / 2 - S.t) * k;
       shape = `<path d="M${cx - ro},${cy}a${ro},${ro} 0 1,0 ${2 * ro},0a${ro},${ro} 0 1,0 ${-2 * ro},0ZM${cx - ri},${cy}a${ri},${ri} 0 1,1 ${2 * ri},0a${ri},${ri} 0 1,1 ${-2 * ri},0Z" fill-rule="evenodd" ${st}/>`;
@@ -105,8 +114,9 @@
     return { p, it };
   }
   const famOptions = () => [
-    { group: 'Profilés en I', items: D.FAMILIES.filter((f) => !f.tube).map((f) => [f.id, f.id]) },
-    { group: 'Tubes', items: D.FAMILIES.filter((f) => f.tube).map((f) => [f.id, f.id]) }
+    { group: 'Profilés en I', items: D.FAMILIES.filter((f) => !f.tube && !f.angle).map((f) => [f.id, f.id]) },
+    { group: 'Tubes', items: D.FAMILIES.filter((f) => f.tube).map((f) => [f.id, f.id]) },
+    { group: 'Cornières', items: D.FAMILIES.filter((f) => f.angle).map((f) => [f.id, f.id]) }
   ];
   const isTubeFam = (f) => { const x = D.FAMILIES.find((y) => y.id === f); return !!(x && x.tube); };
 
@@ -172,7 +182,7 @@
             ${field('L<sub>cr,y</sub>', inp('stab.Lcry', { dis: s.stab.link.Lcry, value: s.stab.link.Lcry ? R.stab && R.stab.Lcry / 1000 : null }), 'm')}
             ${field('L<sub>cr,z</sub>', inp('stab.Lcrz', { dis: s.stab.link.Lcrz, value: s.stab.link.Lcrz ? R.stab && R.stab.Lcrz / 1000 : null }), 'm')}
           </div>
-          <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px">${chk('stab.link.Lcry', 'L<sub>cr,y</sub> auto', true)} ${chk('stab.link.Lcrz', 'L<sub>cr,z</sub> auto', true)} ${chk('stab.sway', 'Nœuds déplaçables (C<sub>m</sub> = 0,9)')}</div>
+          <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px">${chk('stab.link.Lcry', 'L<sub>cr,y</sub> auto', true)} ${chk('stab.link.Lcrz', 'L<sub>cr,z</sub> auto', true)} ${chk('stab.sway', 'Nœuds déplaçables (C<sub>m</sub> = 0,9)')}${R.S && R.S.type === 'L' ? ' ' + chk('stab.bb12', 'Cornière de treillis attachée par une aile (annexe BB.1.2 : λ̄<sub>eff,v</sub> = 0,35 + 0,7·λ̄<sub>v</sub>, λ̄<sub>eff,u</sub> = 0,50 + 0,7·λ̄<sub>u</sub>)', true) : ''}</div>
           <p class="note">Auto : L (2·L pour une console). À ajuster selon la structure : appuis encastrés, maintiens intermédiaires, cadre à nœuds déplaçables…</p>
         </div>
         <div>
@@ -262,7 +272,14 @@
     if (fig) {
       fig.innerHTML = sectionSvg(S, 140) + (S ? `<div style="flex:1;min-width:0">
         <div style="font-weight:800;font-size:15px;margin-bottom:6px">${esc(S.name)} <span class="cls-badge${R.cls === 4 ? ' c4' : ''}" title="Classe la plus défavorable sur les combinaisons">classe ${R.cls}</span></div>
-        <div class="kv">
+        ${S.type === 'L' ? `<div class="kv">
+          <div><span>Masse</span><b>${fmt(S.G, 2)} kg/m</b></div><div><span>A</span><b>${fmt(S.A / 100, 2)} cm²</b></div>
+          <div><span>I<sub>u</sub> (≡ I<sub>y</sub>, axe fort)</span><b>${fmtG(S.Iy / 1e4, 1)} cm⁴</b></div><div><span>I<sub>v</sub> (≡ I<sub>z</sub>, axe faible)</span><b>${fmtG(S.Iz / 1e4, 2)} cm⁴</b></div>
+          <div><span>I<sub>y</sub> / I<sub>z</sub> géométriques</span><b>${fmtG(S.geo.Iyg / 1e4, 1)} / ${fmtG(S.geo.Izg / 1e4, 1)} cm⁴</b></div><div><span>tan α (axe u)</span><b>${fmt(Math.tan(Math.abs(S.geo.alpha) * Math.PI / 180), 3)}</b></div>
+          <div><span>W<sub>el,u</sub> / W<sub>el,v</sub></span><b>${fmtG(S.Wely / 1e3, 2)} / ${fmtG(S.Welz / 1e3, 2)} cm³</b></div><div><span>i<sub>u</sub> / i<sub>v</sub></span><b>${fmt(S.iy / 10, 2)} / ${fmt(S.iz / 10, 2)} cm</b></div>
+          <div><span>e<sub>y</sub> / e<sub>z</sub> (talon → G)</span><b>${fmt(S.geo.ey / 10, 2)} / ${fmt(S.geo.ez / 10, 2)} cm</b></div><div><span>I<sub>t</sub> / I<sub>w</sub></span><b>${fmtG(S.It / 1e4, 2)} cm⁴ / ${fmtG(S.Iw / 1e6, 2)} cm⁶</b></div>
+          <div><span>f<sub>y</sub> (t = ${fmtG(S.t, 1)} mm)</span><b>${R.fy} MPa</b></div><div><span>Courbe (6.2)</span><b>${R.curves.y}</b></div>
+        </div><p class="note" style="margin-top:8px">Cornière vérifiée dans ses axes principaux, comme un profilé : <b>y ≡ u</b> (axe fort) et <b>z ≡ v</b> (axe faible) ; les charges F<sub>z</sub> et F<sub>y</sub> sont prises dans les plans principaux. Résistance élastique (classe 3 au mieux), flambement par flexion-torsion (centre de cisaillement au talon), déversement avec I<sub>w</sub> = 0 (exact pour les ailes égales, approché pour les ailes inégales). Hors champ : excentricité des attaches et section nette (EN 1993-1-8 § 3.10.3) — voir l'option BB.1.2.</p>` : `<div class="kv">
           <div><span>Masse</span><b>${fmt(S.G, 1)} kg/m</b></div><div><span>A</span><b>${fmt(S.A / 100, 1)} cm²</b></div>
           <div><span>I<sub>y</sub></span><b>${fmtG(S.Iy / 1e4, 0)} cm⁴</b></div><div><span>I<sub>z</sub></span><b>${fmtG(S.Iz / 1e4, 0)} cm⁴</b></div>
           <div><span>W<sub>pl,y</sub></span><b>${fmtG(S.Wply / 1e3, 1)} cm³</b></div><div><span>W<sub>pl,z</sub></span><b>${fmtG(S.Wplz / 1e3, 1)} cm³</b></div>
@@ -270,7 +287,7 @@
           <div><span>I<sub>t</sub></span><b>${fmtG(S.It / 1e4, 2)} cm⁴</b></div><div><span>I<sub>w</sub></span><b>${S.Iw ? fmtG(S.Iw / 1e6, 0) + ' cm⁶' : '—'}</b></div>
           <div><span>A<sub>v,z</sub></span><b>${fmt(S.Avz / 100, 1)} cm²</b></div><div><span>i<sub>y</sub> / i<sub>z</sub></span><b>${fmt(S.iy / 10, 2)} / ${fmt(S.iz / 10, 2)} cm</b></div>
           <div><span>f<sub>y</sub> (t = ${fmtG(S.t, 1)} mm)</span><b>${R.fy} MPa</b></div><div><span>Courbes y / z</span><b>${R.curves.y} / ${R.curves.z}</b></div>
-        </div></div>` : '<p class="note warn">Dimensions invalides.</p>');
+        </div>`}</div>` : '<p class="note warn">Dimensions invalides.</p>');
     }
     const ln = $('#ltNote');
     if (ln && R.env && R.env.worst) {
@@ -364,9 +381,10 @@
         <div>
           <div class="sub-title" style="margin-top:0">Classification — tableau 5.2 (torseur de la barre)</div>
           <table class="tbl compact"><thead><tr><th>Paroi</th><th class="num">c/t</th><th>Sollicitation</th><th class="num">Limites cl. 1/2/3</th><th class="num">α</th><th class="num">Classe</th></tr></thead><tbody>
-            ${clRow(S.type === 'CHS' ? 'Tube d/t' : S.type === 'I' ? 'Âme' : 'Parois de hauteur h', m.cl.web)}${clRow(S.type === 'I' ? 'Semelle' : 'Parois de largeur b', m.cl.flange)}
+            ${clRow(S.type === 'L' ? 'Cornière h/t (≤ 15ε)' : S.type === 'CHS' ? 'Tube d/t' : S.type === 'I' ? 'Âme' : 'Parois de hauteur h', m.cl.web)}${clRow(S.type === 'L' ? 'Cornière (b + h)/2t (≤ 11,5ε)' : S.type === 'I' ? 'Semelle' : 'Parois de largeur b', m.cl.flange)}
           </tbody></table>
-          <p class="note">c<sub>âme</sub> = h − 2t<sub>f</sub> − 2r ; c<sub>semelle</sub> = (b − t<sub>w</sub>)/2 − r ; tubes : c = h − 3t (NF EN 1993-1-1 tableau 5.2). Pour l'âme en flexion composée : α = ½·(1 + N<sub>Ed</sub>/(c·t<sub>w</sub>·f<sub>y</sub>)), ψ = 2N<sub>Ed</sub>/(A·f<sub>y</sub>) − 1. Compression seule : classe ${P.cN.cls}${P.ae ? `, A<sub>eff</sub> = ${fmt(P.Aeff / 100, 2)} cm² (ρ<sub>âme</sub> = ${fmt(P.ae.rw, 3)}, ρ<sub>semelle</sub> = ${fmt(P.ae.rf, 3)})` : ''} ; flexion seule : classe ${P.cMy.cls}.</p>
+          ${S.type === 'L' ? `<p class="note">Cornières (tableau 5.2, feuille 3) : classe 3 si h/t ≤ 15ε et (b + h)/(2t) ≤ 11,5ε, sinon classe 4 ; résistance élastique dans tous les cas. Classe 4 : A<sub>eff</sub> avec les ailes en console (EN 1993-1-5, k<sub>σ</sub> = 0,43, c = aile − t)${P.ae ? ` = ${fmt(P.Aeff / 100, 2)} cm² (ρ<sub>h</sub> = ${fmt(P.ae.rw, 3)}, ρ<sub>b</sub> = ${fmt(P.ae.rf, 3)}) ; W<sub>el</sub> réduit par ρ<sub>min</sub> (approximation)` : ''}.</p>` : ''}
+          <p class="note"${S.type === 'L' ? ' hidden' : ''}>c<sub>âme</sub> = h − 2t<sub>f</sub> − 2r ; c<sub>semelle</sub> = (b − t<sub>w</sub>)/2 − r ; tubes : c = h − 3t (NF EN 1993-1-1 tableau 5.2). Pour l'âme en flexion composée : α = ½·(1 + N<sub>Ed</sub>/(c·t<sub>w</sub>·f<sub>y</sub>)), ψ = 2N<sub>Ed</sub>/(A·f<sub>y</sub>) − 1. Compression seule : classe ${P.cN.cls}${P.ae ? `, A<sub>eff</sub> = ${fmt(P.Aeff / 100, 2)} cm² (ρ<sub>âme</sub> = ${fmt(P.ae.rw, 3)}, ρ<sub>semelle</sub> = ${fmt(P.ae.rf, 3)})` : ''} ; flexion seule : classe ${P.cMy.cls}.</p>
           <div class="sub-title">Résistance des sections — § 6.2 (x = ${fmt(c.secSt.x, 2)} m)</div>
           <table class="tbl compact"><tbody>
             ${line('N<sub>pl,Rd</sub> = A·f<sub>y</sub>/γ<sub>M0</sub>', kN(s.Npl) + ' kN')}
@@ -381,10 +399,11 @@
         </div>
         <div>
           <div class="sub-title" style="margin-top:0">Flambement — § 6.3.1</div>
-          <table class="tbl compact"><thead><tr><th></th><th class="num">axe y</th><th class="num">axe z</th></tr></thead><tbody>
-            ${[['L<sub>cr</sub> [m]', (a) => fmt(a.Lcr / 1000, 2)], ['N<sub>cr</sub> [kN]', (a) => kN(a.Ncr)], ['λ̄', (a) => fmt(a.lam, 3)], ['courbe / α', (a) => a.curve + ' / ' + fmt(a.alpha, 2)], ['Φ', (a) => fmt(a.phi, 3)], ['χ', (a) => fmt(a.chi, 3)], ['N<sub>b,Rd</sub> [kN]', (a) => kN(a.NbRd)]]
-              .map(([l, f]) => `<tr><td>${l}</td><td class="num">${f(m.y)}</td><td class="num">${f(m.z)}</td></tr>`).join('')}
+          <table class="tbl compact"><thead><tr><th></th><th class="num">${m.tf ? 'axe u (y)' : 'axe y'}</th><th class="num">${m.tf ? 'axe v (z)' : 'axe z'}</th>${m.tf ? '<th class="num">flexion-torsion</th>' : ''}</tr></thead><tbody>
+            ${[['L<sub>cr</sub> [m]', (a) => fmt(a.Lcr / 1000, 2)], ['N<sub>cr</sub> [kN]', (a) => kN(a.Ncr)]].concat(m.bb ? [['λ̄ (sans BB.1.2)', (a) => (a.lam0 != null ? fmt(a.lam0, 3) : '—')]] : []).concat([[m.bb ? 'λ̄<sub>eff</sub> (BB.1.2)' : 'λ̄', (a) => fmt(a.lam, 3)], ['courbe / α', (a) => a.curve + ' / ' + fmt(a.alpha, 2)], ['Φ', (a) => fmt(a.phi, 3)], ['χ', (a) => fmt(a.chi, 3)], ['N<sub>b,Rd</sub> [kN]', (a) => kN(a.NbRd)]])
+              .map(([l, f]) => `<tr><td>${l}</td><td class="num">${f(m.y)}</td><td class="num">${f(m.z)}</td>${m.tf ? `<td class="num">${l.startsWith('λ̄ (sans') ? '—' : f(m.tf)}</td>` : ''}</tr>`).join('')}
           </tbody></table>
+          ${m.tf ? `<p class="note">Flexion-torsion (6.3.1.4) : N<sub>cr,TF</sub> = plus petite racine de (N − N<sub>u</sub>)(N − N<sub>v</sub>)(N − N<sub>T</sub>) − N²(N − N<sub>u</sub>)·v<sub>0</sub>²/i<sub>0</sub>² − N²(N − N<sub>v</sub>)·u<sub>0</sub>²/i<sub>0</sub>² = 0, avec N<sub>T</sub> = (G·I<sub>t</sub> + π²E·I<sub>w</sub>/L<sub>T</sub>²)/i<sub>0</sub>² = ${kN(m.tf.NT)} kN, centre de cisaillement au talon (u<sub>0</sub> = ${fmt(m.tf.u0, 1)} mm, v<sub>0</sub> = ${fmt(m.tf.v0, 1)} mm), i<sub>0</sub> = ${fmt(Math.sqrt(m.tf.i02), 1)} mm, L<sub>T</sub> = L<sub>cr,z</sub> ; courbe b. ${m.tf.gov ? '<b>Mode dimensionnant</b> : χ<sub>TF</sub> remplace χ<sub>z</sub> dans N<sub>b,Rd</sub> et dans l’interaction (6.62).' : m.bb ? 'Non cumulé avec l’annexe BB.1.2, qui couvre le flambement de la cornière de treillis.' : 'Moins critique que le flambement par flexion : pour information.'}${m.bb ? ' BB.1.2 : élancements effectifs pour une cornière de treillis attachée par une aile (au moins deux boulons ou soudée) ; l\'excentricité de l\'attache n\'a alors pas à être prise en compte en flambement.' : ''}</p>` : ''}
           <div class="sub-title">Déversement — § 6.3.2</div>
           <table class="tbl compact"><tbody>
             ${m.lt.skip ? line('—', sub(m.lt.skip)) : `${line('L<sub>LT</sub> ; k ; k<sub>w</sub>', `${fmt(m.lt.L / 1000, 2)} m ; ${fmtG(m.lt.k, 2)} ; ${fmtG(m.lt.kw, 2)}`)}

@@ -14,7 +14,9 @@ prédimensionnement d’une travée) ; les anomalies relevées et corrigées son
 ## Fonctions
 
 - **Sections** : ~900 profils (IPE, IPE A/O, IPE 750, IPN, HE AA/A/B/M, HE lourds, HL, HD, UB, UC,
-  SHS/RHS finis à chaud ou formés à froid, CHS), PRS soudés et tubes sur mesure. Les caractéristiques
+  SHS/RHS finis à chaud ou formés à froid, CHS, cornières L à ailes égales et inégales EN 10056-1), PRS soudés et tubes sur mesure.
+  Cornières vérifiées dans leurs axes principaux (y ≡ u, z ≡ v), résistance élastique, flambement par flexion-torsion
+  et option annexe BB.1.2 (cornière de treillis attachée par une aile) ; géométrie recoupée avec le classeur « VERIF DIAGONALE ». Les caractéristiques
   sont **calculées depuis les dimensions** (congés inclus) et recoupées avec les catalogues.
 - **Acier** S235 à S460, f<sub>y</sub> selon l'épaisseur (NF EN 10025 ou tableau 3.1).
 - **Sollicitations** : travée appuyée, appuyée–encastrée, bi-encastrée ou console ; charges réparties

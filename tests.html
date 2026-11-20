@@ -16,10 +16,10 @@
 2. Bibliothèque : caractéristiques calculées par la géométrie comparées aux valeurs tabulées du classeur.</p>
 <div id="out"></div>
 <script src="js/sections.js?v=795732d2"></script>
-<script src="js/geom.js?v=63bb6171"></script>
-<script src="js/data.js?v=1c23bd14"></script>
-<script src="js/ec3.js?v=7de645d2"></script>
-<script src="js/store.js?v=98792fe1"></script>
+<script src="js/geom.js?v=cd8b3afb"></script>
+<script src="js/data.js?v=6017099c"></script>
+<script src="js/ec3.js?v=1b95c560"></script>
+<script src="js/store.js?v=d704f43b"></script>
 <script src="js/xl-ref.js?v=436b5782"></script>
 <script src="js/eclisse-calc.js?v=5ad40880"></script>
 <script src="js/platsoude-calc.js?v=994c2e9c"></script>
@@ -362,6 +362,60 @@
     const re = SC.compute(e, 0);
     check('Structville, éclisse UB 533 × 210 × 101 : part d’inertie de l’âme (9 737 / 61 500)', re.dist.eta, 0.158, 0.01);
     check('… effort de semelle dû à M_y = 610·(1 − η)/(h − t_f) [kN]', 610e3 * (1 - re.dist.eta) / re.dist.hf, 989, 0.01);
+  }
+
+  // ------------------------------------------------------------------
+  // K. Cornières — classeur « VERIF DIAGONALE » (feuille Custom, axes u/v) et catalogue ArcelorMittal
+  // ------------------------------------------------------------------
+  title('K · Cornières — géométrie recoupée avec le classeur « VERIF DIAGONALE » et le catalogue, flambement');
+  {
+    const A2 = (h, b, t, r) => G.angle(h, b, t, r);
+    const a1 = A2(100, 75, 8, 10);
+    check('L 100 × 75 × 8 : A [mm²] (classeur 1 347)', a1.A, 1347, 0.01);
+    check('… I_u [cm⁴] (classeur 162,35)', a1.Iy / 1e4, 162.351, 0.015);
+    check('… I_v [cm⁴] (classeur 34,61)', a1.Iz / 1e4, 34.613, 0.02);
+    const a2 = A2(65, 50, 6, 6);
+    check('L 65 × 50 × 6 : I_u [cm⁴] (classeur 33,69)', a2.Iy / 1e4, 33.685, 0.02);
+    check('… I_v [cm⁴] (classeur 7,27)', a2.Iz / 1e4, 7.269, 0.03);
+    const a3 = A2(100, 100, 10, 12);
+    check('L 100 × 100 × 10 : A [cm²] (catalogue 19,2)', a3.A / 100, 19.2, 0.01);
+    check('… I_y = I_z géométriques [cm⁴] (catalogue 177)', a3.geo.Iyg / 1e4, 177, 0.015);
+    check('… I_u [cm⁴] (catalogue 280)', a3.Iy / 1e4, 280, 0.015);
+    check('… I_v [cm⁴] (catalogue 72,9)', a3.Iz / 1e4, 72.9, 0.02);
+    check('… centre de gravité e = 28,2 mm (catalogue)', a3.geo.ey, 28.2, 0.01);
+    check('… ailes égales : axe u incliné à 45°', Math.abs(a3.geo.alpha), 45, 1e-6);
+    check('… ailes égales : I_u + I_v = I_y + I_z (invariant)', (a3.Iy + a3.Iz) / (a3.geo.Iyg + a3.geo.Izg), 1, 1e-9);
+    const a4 = A2(50, 50, 5, 7);
+    check('L 50 × 50 × 5 : I_u / I_v [cm⁴] (catalogue 17,4 / 4,59)', a4.Iy / 1e4 + a4.Iz / 1e4 * 0, 17.4, 0.02);
+    check('… I_v [cm⁴]', a4.Iz / 1e4, 4.59, 0.03);
+    check('Catalogue : 2 familles de cornières (égales, inégales)', D.CATALOG['L (ailes égales)'].length > 40 && D.CATALOG['L (ailes inégales)'].length > 60 ? 1 : 0, 1);
+    check('… L 150 × 90 × 11 présent (liste fournie)', D.CATALOG['L (ailes inégales)'].some((x) => x.name === 'L 150 × 90 × 11') ? 1 : 0, 1);
+    // classification et flambement d'une cornière égale L 100 × 100 × 10 S235, L = 3 m, N = 100 kN
+    const P = E.prepare(a3, 235), eps = 1;
+    check('Classe : h/t = 10 ≤ 15ε et (b + h)/2t = 10 ≤ 11,5ε → classe 3', P.cN.cls, 3);
+    const diag = { N: 100e3, My: [0, 0, 0, 0, 0], Mz: [0, 0, 0, 0, 0], Mymax: 0, Mzmax: 0, loadY: null, loadZ: null };
+    const stab = { L: 3000, bc: 'aa', Lcry: 3000, Lcrz: 3000, LLT: 3000, k: 1, kw: 1, zg: 0, C1: null, C2: null, restrained: false, sway: false };
+    const mb = E.memberCheck(a3, P, 'S235', 1, diag, stab);
+    const Nv = Math.PI ** 2 * 210000 * a3.Iz / 3000 ** 2;
+    check('Flambement autour de v : N_cr,v = π²E·I_v/L² [kN]', mb.z.Ncr / 1e3, Nv / 1e3);
+    check('… courbe b (tableau 6.2, cornières)', mb.z.curve === 'b' && mb.y.curve === 'b' ? 1 : 0, 1);
+    // flexion-torsion, ailes égales (u axe de symétrie) : formule fermée EN 1993-1-3 (6.35)
+    const t = mb.tf, Nu = mb.y.Ncr, NT = t.NT, b2 = 1 - t.u0 * t.u0 / t.i02;
+    const Ntf = Nu / (2 * b2) * (1 + NT / Nu - Math.sqrt((1 - NT / Nu) ** 2 + 4 * (t.u0 * t.u0 / t.i02) * NT / Nu));
+    check('Flexion-torsion (ailes égales, v₀ = 0) : formule fermée EN 1993-1-3 (6.35) [kN]', t.Ncr / 1e3, Ntf / 1e3, 1e-9);
+    check('… L = 3 m : flexion pure autour de v plus critique, flexion-torsion non retenue', t.gov ? 0 : 1, 1);
+    { const a6 = A2(150, 90, 10, 12), P6a = E.prepare(a6, 235), m6 = E.memberCheck(a6, P6a, 'S235', 1, diag, Object.assign({}, stab, { Lcry: 1500, Lcrz: 1500, LLT: 1500 })); check('L 150 × 90 × 10 (ailes inégales), L = 1,5 m : racine de l’équation cubique < min(N_u, N_v) et ≤ N_T', m6.tf.Ncr < Math.min(m6.y.Ncr, m6.z.Ncr, m6.tf.NT) ? 1 : 0, 1);
+      const m6b = E.memberCheck(a6, P6a, 'S235', 1, diag, Object.assign({}, stab, { Lcry: 1500, Lcrz: 1500, LLT: 1500, bb12: true })); check('… avec BB.1.2 : flexion-torsion non cumulée', m6b.tf.gov ? 0 : 1, 1); }
+    check('… centre de cisaillement sur l\'axe de symétrie u (v₀ = 0)', Math.abs(t.v0) < 1e-6 ? 1 : 0, 1);
+    const mbb = E.memberCheck(a3, P, 'S235', 1, diag, Object.assign({}, stab, { bb12: true }));
+    check('Annexe BB.1.2 : λ̄_eff,v = 0,35 + 0,7·λ̄_v', mbb.z.lam, 0.35 + 0.7 * mb.z.lam);
+    // déversement d'une cornière égale : M_cr (I_w = 0) = formule AISC F10 9·E·A·r_v·t·C_b/(8L) pour C1 = 1
+    const Mcr = E.mcr(Object.assign({}, a3, { Iw: 0, It: 2 * 100 * 10 ** 3 / 3 * (1 - 0.05) }), 3000, 1, 1, 1, 0, 0);
+    check('M_cr cornière égale (I_w = 0) ≈ 9·E·A·r_v·t/(8L) (AISC F10) [kN·m]', Mcr / 1e6, 9 * 210000 * a3.A * Math.sqrt(a3.Iz / a3.A) * 10 / (8 * 3000) / 1e6, 0.06);
+    // classe 4 : S355, L 100 × 100 × 8 (h/t = 12,5 > 15·0,814)
+    const a5 = A2(100, 100, 8, 12), P5 = E.prepare(a5, 355);
+    check('L 100 × 100 × 8 S355 : classe 4 (h/t = 12,5 > 12,2)', P5.cN.cls, 4);
+    check('… A_eff < A', P5.Aeff < a5.A ? 1 : 0, 1);
   }
 
   // ------------------------------------------------------------------

@@ -63,11 +63,13 @@
       p2 += `<h3 style="margin-top:0">Détail — combinaison dimensionnante ${esc(c.id)} (${esc(c.label)})</h3><div class="rp-calc">
         ${line('Section la plus sollicitée', `x = ${fmt(c.secSt.x, 2)} m : N = ${kN(c.secSt.N)} kN ; M<sub>y</sub> = ${kNm(c.secSt.My)} kN·m ; M<sub>z</sub> = ${kNm(c.secSt.Mz)} kN·m ; V<sub>z</sub> = ${kN(c.secSt.Vz)} kN`)}
         ${line('Maxima sur la barre', `M<sub>y,Ed</sub> = ${kNm(c.diag.Mymax)} kN·m ; M<sub>z,Ed</sub> = ${kNm(c.diag.Mzmax)} kN·m ; V<sub>z,Ed</sub> = ${kN(c.Vzmax)} kN`)}
-        ${line('Classe (tableau 5.2)', `${m.cls} — âme c/t = ${fmt(m.cl.web.ct, 1)}${m.cl.flange ? ', semelle c/t = ' + fmt(m.cl.flange.ct, 1) : ''}, ε = ${fmt(m.cl.eps, 3)}`)}
+        ${line('Classe (tableau 5.2)', S.type === 'L' ? `${m.cls} — cornière h/t = ${fmt(m.cl.web.ct, 1)}, (b + h)/2t = ${fmt(m.cl.flange.ct, 1)}, ε = ${fmt(m.cl.eps, 3)} ; axes principaux y ≡ u (fort), z ≡ v (faible)` : `${m.cls} — âme c/t = ${fmt(m.cl.web.ct, 1)}${m.cl.flange ? ', semelle c/t = ' + fmt(m.cl.flange.ct, 1) : ''}, ε = ${fmt(m.cl.eps, 3)}`)}
         ${line('N<sub>pl,Rd</sub> ; V<sub>pl,z,Rd</sub>', `${kN(sc.Npl)} kN ; ${kN(sc.Vplz)} kN`)}
         ${line(`M<sub>y,V,Rd</sub> (W<sub>${sc.cls <= 2 ? 'pl' : 'el'}</sub>${sc.rhoz > 0 ? ', ρ = ' + fmt(sc.rhoz, 3) : ''})`, `${kNm(sc.MyRd)} kN·m`)}
         ${line('Flambement y', `L<sub>cr</sub> = ${fmt(m.y.Lcr / 1000, 2)} m ; λ̄ = ${fmt(m.y.lam, 3)} ; courbe ${m.y.curve} ; χ<sub>y</sub> = ${fmt(m.y.chi, 3)} ; N<sub>b,y,Rd</sub> = ${kN(m.y.NbRd)} kN`)}
         ${line('Flambement z', `L<sub>cr</sub> = ${fmt(m.z.Lcr / 1000, 2)} m ; λ̄ = ${fmt(m.z.lam, 3)} ; courbe ${m.z.curve} ; χ<sub>z</sub> = ${fmt(m.z.chi, 3)} ; N<sub>b,z,Rd</sub> = ${kN(m.z.NbRd)} kN`)}
+        ${m.tf ? line('Flexion-torsion', `N<sub>cr,TF</sub> = ${kN(m.tf.Ncr)} kN ; λ̄ = ${fmt(m.tf.lam, 3)} ; courbe ${m.tf.curve} ; χ<sub>TF</sub> = ${fmt(m.tf.chi, 3)} ; N<sub>b,TF,Rd</sub> = ${kN(m.tf.NbRd)} kN (centre de cisaillement au talon)`) : ''}
+        ${m.bb ? line('Annexe BB.1.2', 'cornière de treillis attachée par une aile : λ̄<sub>eff,v</sub> = 0,35 + 0,7·λ̄<sub>v</sub> ; λ̄<sub>eff,u</sub> = 0,50 + 0,7·λ̄<sub>u</sub>') : ''}
         ${line('Déversement', m.lt.skip ? sub(m.lt.skip) : `C<sub>1</sub> = ${fmt(m.lt.C1, 3)} ; C<sub>2</sub> = ${fmt(m.lt.C2, 3)} ; M<sub>cr</sub> = ${kNm(m.lt.Mcr)} kN·m ; λ̄<sub>LT</sub> = ${fmt(m.lt.lam, 3)} ; courbe ${m.lt.curve} ; χ<sub>LT</sub> = ${fmt(m.lt.chi, 3)} ; M<sub>b,Rd</sub> = ${kNm(m.lt.MbRd)} kN·m`)}
         ${line('Interaction (annexe B)', `C<sub>my</sub> = ${fmt(m.cmy.cm, 3)} ; C<sub>mz</sub> = ${fmt(m.cmz.cm, 3)} ; k<sub>yy</sub> = ${fmt(m.kyy, 3)} ; k<sub>yz</sub> = ${fmt(m.kyz, 3)} ; k<sub>zy</sub> = ${fmt(m.kzy, 3)} ; k<sub>zz</sub> = ${fmt(m.kzz, 3)}`)}
         ${line(`Critère dimensionnant — ${c.gov ? E.CRITERIA[c.gov].ref : ''}`, `${c.gov ? sub(E.CRITERIA[c.gov].label) : '—'} = <b>${fmt(c.max, 3)}</b> ${c.max <= 1 ? '≤ 1' : '&gt; 1'}`)}

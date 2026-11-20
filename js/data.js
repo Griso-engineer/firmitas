@@ -44,7 +44,20 @@
     { id: 'HE AA', re: /^HE \d+ AA$/ }, { id: 'HE A', re: /^HE \d+ A$/ }, { id: 'HE B', re: /^HE \d+ B$/ }, { id: 'HE M', re: /^HE \d+ M$/ },
     { id: 'HE (lourds)', re: /^HE \d+ ×/ }, { id: 'HL', re: /^HL / }, { id: 'HD', re: /^HD / },
     { id: 'UB', re: /^UB / }, { id: 'UC', re: /^UC / },
-    { id: 'SHS (tube carré)', tube: 'shs' }, { id: 'RHS (tube rectangulaire)', tube: 'rhs' }, { id: 'CHS (tube rond)', tube: 'chs' }
+    { id: 'SHS (tube carré)', tube: 'shs' }, { id: 'RHS (tube rectangulaire)', tube: 'rhs' }, { id: 'CHS (tube rond)', tube: 'chs' },
+    { id: 'L (ailes égales)', angle: 'eq' }, { id: 'L (ailes inégales)', angle: 'uneq' }
+  ];
+  // Cornières EN 10056-1 (et dimensions courantes des catalogues) : [h, b, [t…], r1 (congé de pied)]
+  const ANGLES = [
+    [20, 20, [3], 3.5], [25, 25, [3, 4], 3.5], [30, 30, [3, 4], 5], [35, 35, [4], 5], [40, 40, [4, 5], 6], [45, 45, [4.5], 7],
+    [50, 50, [4, 5, 6], 7], [60, 60, [5, 6, 8], 8], [65, 65, [7], 9], [70, 70, [6, 7], 9], [75, 75, [6, 8], 9], [80, 80, [8, 10], 10],
+    [90, 90, [7, 8, 9, 10], 11], [100, 100, [8, 10, 12], 12], [120, 120, [10, 12], 13], [130, 130, [12], 14],
+    [150, 150, [10, 12, 14, 15, 18], 16], [160, 160, [15, 17], 17], [180, 180, [16, 18], 18], [200, 200, [16, 18, 20, 24], 18], [250, 250, [25, 28, 35], 18],
+    [30, 20, [3], 4], [40, 20, [4], 4], [40, 25, [4], 4], [45, 30, [4], 4.5], [50, 30, [5], 5], [60, 30, [5], 5], [60, 40, [5, 6], 6],
+    [65, 50, [5, 6, 8], 6], [70, 50, [6], 7], [75, 50, [6, 8], 7], [80, 40, [6, 8], 7], [80, 60, [6, 7, 8], 8], [90, 65, [6, 8, 10], 8],
+    [100, 50, [6, 8], 8], [100, 65, [7, 8, 9, 10, 12], 10], [100, 75, [6, 8, 10, 12], 10], [110, 70, [10, 12], 10], [120, 80, [8, 10, 12], 11],
+    [125, 75, [8, 10, 12], 11], [130, 90, [10, 12, 14], 11], [135, 65, [8, 10], 11], [140, 90, [8, 10, 12, 14], 11], [150, 75, [9, 10, 12, 15], 12],
+    [150, 90, [10, 11, 12, 15], 12], [150, 100, [10, 12, 14], 12], [200, 100, [10, 12, 14, 15, 16], 15], [200, 150, [12, 15], 15], [250, 90, [12, 14, 16], 15]
   ];
 
   const num = (n) => parseFloat((n.match(/[\d.]+/) || [0])[0]);
@@ -53,7 +66,8 @@
   const CATALOG = {};          // famille → [{name, make()}]
   FAMILIES.forEach((f) => {
     let list;
-    if (f.ipn) list = RAW.IPN.map((r) => ({ name: r[0], make: () => G.ipn(r) }));
+    if (f.angle) list = ANGLES.filter(([h, b]) => (f.angle === 'eq') === (h === b)).flatMap(([h, b, ts, r1]) => ts.map((t) => { const s = G.angle(h, b, t, r1); return { name: s.name, make: () => G.angle(h, b, t, r1) }; }));
+    else if (f.ipn) list = RAW.IPN.map((r) => ({ name: r[0], make: () => G.ipn(r) }));
     else if (f.tube === 'chs') list = RAW.CHS.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(([d, t]) => { const s = G.chs(d, t); return { name: s.name, make: (fab) => G.chs(d, t, fab) }; });
     else if (f.tube) list = RAW.RHS.filter(([h, b]) => (f.tube === 'shs') === (h === b)).sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2])
       .map(([h, b, t]) => { const s = G.rhs(h, b, t); return { name: s.name, make: (fab) => G.rhs(h, b, t, fab) }; });
@@ -92,5 +106,5 @@
     { id: 'Qy', cas: 'Q', dir: 'y', label: 'Q — variables', sub: 'plan faible (F<sub>y</sub>)' }
   ];
 
-  window.FIRMITAS_DATA = { E: 210000, Gs: 80770, STEELS, fyOf, FAMILIES, CATALOG, findSection, ALPHA, BC, SLS_PRESETS, LOAD_ROWS, ADDED, FIXED };
+  window.FIRMITAS_DATA = { E: 210000, Gs: 80770, STEELS, fyOf, FAMILIES, ANGLES, CATALOG, findSection, ALPHA, BC, SLS_PRESETS, LOAD_ROWS, ADDED, FIXED };
 })();

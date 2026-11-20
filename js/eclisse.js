@@ -63,7 +63,7 @@
   const chk = (p, label, rr) => `<label class="check"><input type="checkbox" data-sp="${p}"${get(p) ? ' checked' : ''}${rr ? ' data-rr="1"' : ''}> ${label}</label>`;
   const field = (label, control, unit, hint) => `<label class="field"><span>${label}${unit ? ` <span class="u">[${unit}]</span>` : ''}</span>${control}${hint ? `<span class="hint">${hint}</span>` : ''}</label>`;
   const blockHead = (n, t, p) => `<div class="block-head"><span class="num">${n}</span><h2>${t}</h2><p>${p || ''}</p></div>`;
-  const iFams = () => D.FAMILIES.filter((f) => !f.tube && !f.ipn).map((f) => [f.id, f.id]);
+  const iFams = () => D.FAMILIES.filter((f) => !f.tube && !f.ipn && !f.angle).map((f) => [f.id, f.id]);
 
   function init(database) { db = database; st = db.sdraft ? C.upgrade(db.sdraft) : C.defaultState(); dirty = !!db.sdraftDirty; }
   let saveT = null;
