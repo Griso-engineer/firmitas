@@ -16,10 +16,10 @@
 2. Bibliothèque : caractéristiques calculées par la géométrie comparées aux valeurs tabulées du classeur.</p>
 <div id="out"></div>
 <script src="js/sections.js?v=795732d2"></script>
-<script src="js/geom.js?v=cd8b3afb"></script>
+<script src="js/geom.js?v=58cce37d"></script>
 <script src="js/data.js?v=6017099c"></script>
-<script src="js/ec3.js?v=1b95c560"></script>
-<script src="js/store.js?v=d704f43b"></script>
+<script src="js/ec3.js?v=94b9c048"></script>
+<script src="js/store.js?v=68891c70"></script>
 <script src="js/xl-ref.js?v=436b5782"></script>
 <script src="js/eclisse-calc.js?v=5ad40880"></script>
 <script src="js/platsoude-calc.js?v=994c2e9c"></script>
@@ -416,6 +416,53 @@
     const a5 = A2(100, 100, 8, 12), P5 = E.prepare(a5, 355);
     check('L 100 × 100 × 8 S355 : classe 4 (h/t = 12,5 > 12,2)', P5.cN.cls, 4);
     check('… A_eff < A', P5.Aeff < a5.A ? 1 : 0, 1);
+  }
+
+  // ------------------------------------------------------------------
+  // L. Rectangle plein — plat 150 × 10 S355 (raidisseur élancé), calculs manuels
+  // ------------------------------------------------------------------
+  title('L · Rectangle plein — plat 150 × 10 S355 : caractéristiques, flambement, déversement (calculs manuels)');
+  {
+    const p = G.rect(150, 10), Gs = D.Gs, Es = 210000;
+    check('Plat 150 × 10 : A = 1 500 mm²', p.A, 1500, 1e-12);
+    check('… I_y = b·h³/12 = 281,25 cm⁴', p.Iy / 1e4, 281.25, 1e-12);
+    check('… I_z = h·b³/12 = 1,25 cm⁴', p.Iz / 1e4, 1.25, 1e-12);
+    check('… W_pl,y = b·h²/4 = 56,25 cm³', p.Wply / 1e3, 56.25, 1e-12);
+    check('… I_t = a·c³·[1/3 − 0,21·(c/a)·(1 − (c/a)⁴/12)] = 4,790 cm⁴', p.It / 1e4, 15 * (1 / 3 - 0.21 / 15 * (1 - Math.pow(1 / 15, 4) / 12)), 1e-12);
+    check('… carré 50 × 50 : I_t = 0,1406·a⁴ (Roark)', G.rect(50, 50).It / 50 ** 4, 0.1406, 2e-3);
+    const P = E.prepare(p, 355);
+    check('Classe 1 en compression et en flexion (section pleine)', Math.max(P.cN.cls, P.cMy.cls, P.cMz.cls), 1);
+    check('Courbes de flambement c / c (tableau 6.2, sections pleines)', E.curves(p, 'S355').y === 'c' && E.curves(p, 'S460').z === 'c' ? 1 : 0, 1);
+    // interaction plastique : M_N = M_pl·(1 − n²)
+    const sc = E.sectionCheck(p, P, 1, { N: 0.5 * 1500 * 355, My: 0, Mz: 0, Vz: 0, Vy: 0 });
+    check('N/N_pl = 0,5 : M_N,y = 0,75·M_pl,y', sc.MNy / (p.Wply * 355), 0.75, 1e-9);
+    // compression, L = 1 m bi-articulé, N = 10 kN : flambement autour de z (axe faible)
+    const s = ST.defaultState();
+    Object.assign(s, { mode: 'direct', L: 1, pp: false }); s.sec.kind = 'rect'; s.sec.rect = { h: 150, b: 10 }; s.direct.N = 10;
+    s.stab.link.LLT = true; s.stab.zgMode = 'centre';
+    const r = E.compute(s), Ncr = Math.PI ** 2 * Es * 12500 / 1e6, lz = Math.sqrt(1500 * 355 / Ncr);
+    const ph = 0.5 * (1 + 0.49 * (lz - 0.2) + lz * lz), xz = 1 / (ph + Math.sqrt(ph * ph - lz * lz));
+    check('Compression L = 1 m : λ̄_z = √(A·f_y/N_cr,z) = 4,53', r.env.worst.mem.z.lam, lz, 1e-9);
+    check('… N_b,z,Rd = χ_z·A·f_y (courbe c) [kN]', r.env.worst.mem.z.NbRd / 1e3, xz * 1500 * 355 / 1e3, 1e-9);
+    check('… taux N/N_b,Rd', r.env.byCrit.Fb.r, 10e3 / (xz * 1500 * 355), 1e-9);
+    // flexion M_y uniforme 2 kN·m, L_LT = 1 m, C1 = 1 : M_cr = (π/L)·√(E·I_z·G·I_t)
+    const s2 = ST.defaultState();
+    Object.assign(s2, { mode: 'direct', L: 1, pp: false }); s2.sec.kind = 'rect'; s2.sec.rect = { h: 150, b: 10 }; s2.direct.My = [2, 2, 2];
+    s2.stab.link.LLT = true; s2.stab.zgMode = 'centre';
+    const r2 = E.compute(s2), lt = r2.env.worst.mem.lt, Mcr = Math.PI / 1000 * Math.sqrt(Es * p.Iz * Gs * p.It);
+    check('Déversement : M_cr = (π/L)·√(E·I_z·G·I_t) (C1 = 1, I_w = 0) [kN·m]', lt.Mcr / 1e6, Mcr / 1e6, 1e-9);
+    const lLT = Math.sqrt(p.Wply * 355 / Mcr), pl = 0.5 * (1 + 0.76 * (lLT - 0.2) + lLT * lLT), xl = 1 / (pl + Math.sqrt(pl * pl - lLT * lLT));
+    check('… courbe d (6.3.2.2, cas général), χ_LT', lt.curve === 'd' ? lt.chi : -1, xl, 1e-9);
+    check('… taux M_y/M_b,Rd', r2.env.byCrit.LT.r, 2e6 / (xl * p.Wply * 355), 1e-9);
+    // charge répartie appliquée en fibre supérieure : z_g = h/2 déstabilisant, M_cr plus faible qu'au centre
+    const s3 = ST.defaultState();
+    Object.assign(s3, { mode: 'charges', L: 1, pp: false }); s3.sec.kind = 'rect'; s3.sec.rect = { h: 150, b: 10 };
+    s3.loads = { Gz: { q: 1, P: '', x: '' }, Qz: { q: '', P: '', x: '' }, Gy: { q: '', P: '', x: '' }, Qy: { q: '', P: '', x: '' } };
+    s3.stab.link.LLT = true;
+    const mTop = E.compute(s3).env.worst.mem.lt; s3.stab.zgMode = 'centre';
+    const mCen = E.compute(s3).env.worst.mem.lt;
+    check('Charge en fibre supérieure : C2·z_g pris en compte (M_cr,dessus < M_cr,centre)', mTop.Mcr < 0.95 * mCen.Mcr && mTop.C2 > 0 ? 1 : 0, 1);
+    check('… sensible à la torsion : k_zy de la méthode 2 pour profils ouverts', E.compute(s3).env.worst.mem.sens ? 1 : 0, 1);
   }
 
   // ------------------------------------------------------------------

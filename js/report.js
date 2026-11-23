@@ -46,7 +46,7 @@
       <p>L = ${fmt(R.L, 2)} m · ${D.BC[s.bc].label.toLowerCase()} · vérification selon NF EN 1990 et NF EN 1993-1-1 avec annexes nationales françaises</p></div>
       ${H2('Hypothèses')}
       <div class="rp-fig">${svg}<div style="flex:1"><div class="rp-kv">
-        ${kv('Section', esc(S.name) + (S.type === 'I' ? (S.fab === 'welded' ? ' (PRS soudé)' : ' (laminé)') : S.fab === 'cold' ? ' (formé à froid)' : ' (fini à chaud)'))}${kv('Acier', `${R.grade} — f<sub>y</sub> = ${R.fy} MPa (t = ${fmtG(S.t, 1)} mm)`)}
+        ${kv('Section', esc(S.name) + (S.type === 'I' ? (S.fab === 'welded' ? ' (PRS soudé)' : ' (laminé)') : S.type === 'RECT' ? ' (rectangle plein)' : S.fab === 'cold' ? ' (formé à froid)' : ' (fini à chaud)'))}${kv('Acier', `${R.grade} — f<sub>y</sub> = ${R.fy} MPa (t = ${fmtG(S.t, 1)} mm)`)}
         ${kv('γ<sub>M0</sub> / γ<sub>M1</sub>', fmt(R.g0, 2) + ' / ' + fmt(R.g1, 2))}${kv('Masse', fmt(S.G, 1) + ' kg/m')}
         ${kv('A / A<sub>v,z</sub>', `${fmt(S.A / 100, 1)} / ${fmt(S.Avz / 100, 1)} cm²`)}${kv('I<sub>y</sub> / I<sub>z</sub>', `${fmtG(S.Iy / 1e4, 0)} / ${fmtG(S.Iz / 1e4, 0)} cm⁴`)}
         ${kv('W<sub>pl,y</sub> / W<sub>el,y</sub>', `${fmtG(S.Wply / 1e3, 1)} / ${fmtG(S.Wely / 1e3, 1)} cm³`)}${kv('W<sub>pl,z</sub> / W<sub>el,z</sub>', `${fmtG(S.Wplz / 1e3, 1)} / ${fmtG(S.Welz / 1e3, 1)} cm³`)}
@@ -63,7 +63,7 @@
       p2 += `<h3 style="margin-top:0">Détail — combinaison dimensionnante ${esc(c.id)} (${esc(c.label)})</h3><div class="rp-calc">
         ${line('Section la plus sollicitée', `x = ${fmt(c.secSt.x, 2)} m : N = ${kN(c.secSt.N)} kN ; M<sub>y</sub> = ${kNm(c.secSt.My)} kN·m ; M<sub>z</sub> = ${kNm(c.secSt.Mz)} kN·m ; V<sub>z</sub> = ${kN(c.secSt.Vz)} kN`)}
         ${line('Maxima sur la barre', `M<sub>y,Ed</sub> = ${kNm(c.diag.Mymax)} kN·m ; M<sub>z,Ed</sub> = ${kNm(c.diag.Mzmax)} kN·m ; V<sub>z,Ed</sub> = ${kN(c.Vzmax)} kN`)}
-        ${line('Classe (tableau 5.2)', S.type === 'L' ? `${m.cls} — cornière h/t = ${fmt(m.cl.web.ct, 1)}, (b + h)/2t = ${fmt(m.cl.flange.ct, 1)}, ε = ${fmt(m.cl.eps, 3)} ; axes principaux y ≡ u (fort), z ≡ v (faible)` : `${m.cls} — âme c/t = ${fmt(m.cl.web.ct, 1)}${m.cl.flange ? ', semelle c/t = ' + fmt(m.cl.flange.ct, 1) : ''}, ε = ${fmt(m.cl.eps, 3)}`)}
+        ${line('Classe (tableau 5.2)', S.type === 'RECT' ? `1 — section pleine, pas de paroi mince (pas de voilement local)` : S.type === 'L' ? `${m.cls} — cornière h/t = ${fmt(m.cl.web.ct, 1)}, (b + h)/2t = ${fmt(m.cl.flange.ct, 1)}, ε = ${fmt(m.cl.eps, 3)} ; axes principaux y ≡ u (fort), z ≡ v (faible)` : `${m.cls} — âme c/t = ${fmt(m.cl.web.ct, 1)}${m.cl.flange ? ', semelle c/t = ' + fmt(m.cl.flange.ct, 1) : ''}, ε = ${fmt(m.cl.eps, 3)}`)}
         ${line('N<sub>pl,Rd</sub> ; V<sub>pl,z,Rd</sub>', `${kN(sc.Npl)} kN ; ${kN(sc.Vplz)} kN`)}
         ${line(`M<sub>y,V,Rd</sub> (W<sub>${sc.cls <= 2 ? 'pl' : 'el'}</sub>${sc.rhoz > 0 ? ', ρ = ' + fmt(sc.rhoz, 3) : ''})`, `${kNm(sc.MyRd)} kN·m`)}
         ${line('Flambement y', `L<sub>cr</sub> = ${fmt(m.y.Lcr / 1000, 2)} m ; λ̄ = ${fmt(m.y.lam, 3)} ; courbe ${m.y.curve} ; χ<sub>y</sub> = ${fmt(m.y.chi, 3)} ; N<sub>b,y,Rd</sub> = ${kN(m.y.NbRd)} kN`)}

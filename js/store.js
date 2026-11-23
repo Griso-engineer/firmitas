@@ -10,7 +10,7 @@
     return {
       v: 1,
       name: 'Poutre P1',
-      sec: { kind: 'cat', fam: 'IPE', name: 'IPE 300', fab: 'hot', prs: { h: 500, b: 250, tw: 10, tf: 20 }, tube: { shape: 'rhs', h: 200, b: 100, t: 6, d: 168.3 } },
+      sec: { kind: 'cat', fam: 'IPE', name: 'IPE 300', fab: 'hot', prs: { h: 500, b: 250, tw: 10, tf: 20 }, tube: { shape: 'rhs', h: 200, b: 100, t: 6, d: 168.3 }, rect: { h: 150, b: 10 } },
       steel: { grade: 'S355', fyMode: 'en10025', fyCustom: '', gM0: 1, gM1: 1 },
       L: 6, bc: 'aa', mode: 'charges', pp: true,
       loads: { Gz: { q: 6, P: '', x: '' }, Qz: { q: 9, P: '', x: '' }, Gy: { q: '', P: '', x: '' }, Qy: { q: '', P: '', x: '' } },

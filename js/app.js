@@ -69,7 +69,9 @@
         <path d="M${x0},${y0}h${t}V${y0 + H - t}H${x0 + W}v${t}H${x0}Z" ${st}/>
         ${ax(a, 'u', true)}${ax(a + Math.PI / 2, 'v', false)}<circle cx="${gx}" cy="${gy}" r="1.8" fill="#111"/></svg>`;
     }
-    if (S.type === 'CHS') {
+    if (S.type === 'RECT') {
+      shape = `<rect x="${x0}" y="${y0}" width="${Math.max(W, 1)}" height="${Math.max(H, 1)}" ${st}/>`;
+    } else if (S.type === 'CHS') {
       const ro = S.d / 2 * k, ri = (S.d / 2 - S.t) * k;
       shape = `<path d="M${cx - ro},${cy}a${ro},${ro} 0 1,0 ${2 * ro},0a${ro},${ro} 0 1,0 ${-2 * ro},0ZM${cx - ri},${cy}a${ri},${ri} 0 1,1 ${2 * ri},0a${ri},${ri} 0 1,1 ${-2 * ri},0Z" fill-rule="evenodd" ${st}/>`;
     } else if (S.type === 'RHS') {
@@ -124,13 +126,14 @@
     recompute();
     const { p } = crumb();
     const s = state, c = s.sec;
-    const kindChips = [['cat', 'Catalogue'], ['prs', 'PRS (I soudé)'], ['tube', 'Tube sur mesure']]
+    const kindChips = [['cat', 'Catalogue'], ['prs', 'PRS (I soudé)'], ['tube', 'Tube sur mesure'], ['rect', 'Rectangle plein']]
       .map(([k, l]) => `<button type="button" class="chip${c.kind === k ? ' on' : ''}" data-act="kind" data-v="${k}">${l}</button>`).join('');
     const modeChips = [['charges', 'Charges sur la poutre'], ['direct', 'Sollicitations de calcul (modèle)']]
       .map(([k, l]) => `<button type="button" class="chip${s.mode === k ? ' on' : ''}" data-act="mode" data-v="${k}">${l}</button>`).join('');
     let secFields;
     if (c.kind === 'prs') secFields = `${field('h', inp('sec.prs.h'), 'mm')}${field('b', inp('sec.prs.b'), 'mm')}${field('t<sub>w</sub>', inp('sec.prs.tw'), 'mm')}${field('t<sub>f</sub>', inp('sec.prs.tf'), 'mm')}`;
-    else if (c.kind === 'tube') secFields = `${field('Forme', sel('sec.tube.shape', [['rhs', 'Rectangulaire / carré'], ['chs', 'Rond']], { rerender: true }))}
+    else if (c.kind === 'rect') secFields = `${field('h', inp('sec.rect.h'), 'mm', 'Hauteur, selon z (flexion M<sub>y</sub>)')}${field('b', inp('sec.rect.b'), 'mm', 'Épaisseur, selon y')}`;
+    else if (c.kind === 'tube') secFields =`${field('Forme', sel('sec.tube.shape', [['rhs', 'Rectangulaire / carré'], ['chs', 'Rond']], { rerender: true }))}
       ${c.tube.shape === 'chs' ? field('d', inp('sec.tube.d'), 'mm') : field('h', inp('sec.tube.h'), 'mm') + field('b', inp('sec.tube.b'), 'mm')}${field('t', inp('sec.tube.t'), 'mm')}
       ${field('Fabrication', sel('sec.fab', [['hot', 'Fini à chaud (EN 10210)'], ['cold', 'Formé à froid (EN 10219)']]))}`;
     else secFields = `${field('Famille', sel('sec.fam', famOptions(), { rerender: true }))}
@@ -152,7 +155,7 @@
         <button class="btn primary" data-act="report">Fiche NDC ↗</button>
       </div>
 
-      ${blockHead('01', 'Section & acier', "Profilé du catalogue (caractéristiques recalculées depuis les dimensions), PRS soudé ou tube. Axe y : axe fort, z : axe faible.")}
+      ${blockHead('01', 'Section & acier', "Profilé du catalogue (caractéristiques recalculées depuis les dimensions), PRS soudé, tube ou rectangle plein (plat). Axe y horizontal, axe z vertical (M<sub>y</sub> : flexion autour de y).")}
       <div class="cols2">
         <div>
           <div class="fields">${field('Repère', inp('name', { type: 'text', ph: 'ex. Poutre P3 – R+1' }))}</div>
@@ -281,13 +284,13 @@
           <div><span>f<sub>y</sub> (t = ${fmtG(S.t, 1)} mm)</span><b>${R.fy} MPa</b></div><div><span>Courbe (6.2)</span><b>${R.curves.y}</b></div>
         </div><p class="note" style="margin-top:8px">Cornière vérifiée dans ses axes principaux, comme un profilé : <b>y ≡ u</b> (axe fort) et <b>z ≡ v</b> (axe faible) ; les charges F<sub>z</sub> et F<sub>y</sub> sont prises dans les plans principaux. Résistance élastique (classe 3 au mieux), flambement par flexion-torsion (centre de cisaillement au talon), déversement avec I<sub>w</sub> = 0 (exact pour les ailes égales, approché pour les ailes inégales). Hors champ : excentricité des attaches et section nette (EN 1993-1-8 § 3.10.3) — voir l'option BB.1.2.</p>` : `<div class="kv">
           <div><span>Masse</span><b>${fmt(S.G, 1)} kg/m</b></div><div><span>A</span><b>${fmt(S.A / 100, 1)} cm²</b></div>
-          <div><span>I<sub>y</sub></span><b>${fmtG(S.Iy / 1e4, 0)} cm⁴</b></div><div><span>I<sub>z</sub></span><b>${fmtG(S.Iz / 1e4, 0)} cm⁴</b></div>
+          <div><span>I<sub>y</sub></span><b>${fmtG(S.Iy / 1e4, S.Iy < 1e6 ? 2 : 0)} cm⁴</b></div><div><span>I<sub>z</sub></span><b>${fmtG(S.Iz / 1e4, S.Iz < 1e6 ? 2 : 0)} cm⁴</b></div>
           <div><span>W<sub>pl,y</sub></span><b>${fmtG(S.Wply / 1e3, 1)} cm³</b></div><div><span>W<sub>pl,z</sub></span><b>${fmtG(S.Wplz / 1e3, 1)} cm³</b></div>
           <div><span>W<sub>el,y</sub></span><b>${fmtG(S.Wely / 1e3, 1)} cm³</b></div><div><span>W<sub>el,z</sub></span><b>${fmtG(S.Welz / 1e3, 1)} cm³</b></div>
           <div><span>I<sub>t</sub></span><b>${fmtG(S.It / 1e4, 2)} cm⁴</b></div><div><span>I<sub>w</sub></span><b>${S.Iw ? fmtG(S.Iw / 1e6, 0) + ' cm⁶' : '—'}</b></div>
           <div><span>A<sub>v,z</sub></span><b>${fmt(S.Avz / 100, 1)} cm²</b></div><div><span>i<sub>y</sub> / i<sub>z</sub></span><b>${fmt(S.iy / 10, 2)} / ${fmt(S.iz / 10, 2)} cm</b></div>
           <div><span>f<sub>y</sub> (t = ${fmtG(S.t, 1)} mm)</span><b>${R.fy} MPa</b></div><div><span>Courbes y / z</span><b>${R.curves.y} / ${R.curves.z}</b></div>
-        </div>`}</div>` : '<p class="note warn">Dimensions invalides.</p>');
+        </div>`}${S.type === 'RECT' ? `<p class="note" style="margin-top:8px">Rectangle plein (fer plat) : classe 1, flambement courbe c sur les deux axes (tableau 6.2, sections pleines), déversement par la méthode générale (6.3.2.2, courbe d) avec M<sub>cr</sub> calculé depuis I<sub>z</sub> et I<sub>t</sub> = ${fmtG(S.It / 1e4, 2)} cm⁴ (I<sub>w</sub> négligé) et l'effet du point d'application z<sub>g</sub>. Barre libre entre ses maintiens : un raidisseur soudé sur une tôle relève de l'EN 1993-1-5 (voilement par torsion du raidisseur, § 9.2.1(8)).</p>` : ''}</div>` : '<p class="note warn">Dimensions invalides.</p>');
     }
     const ln = $('#ltNote');
     if (ln && R.env && R.env.worst) {
@@ -374,17 +377,18 @@
     if (!R.env || !R.env.worst) { app.innerHTML = `<div class="page">${blockHead('—', 'Détail', 'Aucun résultat.')}</div>`; return; }
     const c = R.env.worst, m = c.mem, s = c.sec, S = R.S, P = R.P;
     const line = (a, b) => `<tr><td>${a}</td><td class="num">${b}</td></tr>`;
-    const clRow = (n, w) => (w ? `<tr><td>${n}</td><td class="num">${fmt(w.ct, 2)}</td><td>${({ comp: 'comprimée', bend: 'fléchie', nm: 'fléchie et comprimée', out: 'en console', tube: 'tube', none: 'non comprimée' })[w.mode] || w.mode}</td><td class="num">${w.lim ? w.lim.map((x) => fmt(x, 1)).join(' / ') : '—'}</td><td class="num">${w.alpha != null ? fmt(w.alpha, 3) : '—'}</td><td class="num"><b>${w.cls}</b></td></tr>` : '');
+    const clRow = (n, w) => (w ? `<tr><td>${n}</td><td class="num">${fmt(w.ct, 2)}</td><td>${({ comp: 'comprimée', bend: 'fléchie', nm: 'fléchie et comprimée', out: 'en console', tube: 'tube', solid: 'section pleine', none: 'non comprimée' })[w.mode] || w.mode}</td><td class="num">${w.lim ? w.lim.map((x) => fmt(x, 1)).join(' / ') : '—'}</td><td class="num">${w.alpha != null ? fmt(w.alpha, 3) : '—'}</td><td class="num"><b>${w.cls}</b></td></tr>` : '');
     app.innerHTML = `<div class="page">
       ${blockHead('—', 'Détail', `Calculs intermédiaires de l'élément courant « ${esc(state.name)} » — ${esc(S.name)} ${R.grade}, combinaison dimensionnante ${esc(c.id)} (${esc(c.label)}).`)}
       <div class="cols2">
         <div>
           <div class="sub-title" style="margin-top:0">Classification — tableau 5.2 (torseur de la barre)</div>
           <table class="tbl compact"><thead><tr><th>Paroi</th><th class="num">c/t</th><th>Sollicitation</th><th class="num">Limites cl. 1/2/3</th><th class="num">α</th><th class="num">Classe</th></tr></thead><tbody>
-            ${clRow(S.type === 'L' ? 'Cornière h/t (≤ 15ε)' : S.type === 'CHS' ? 'Tube d/t' : S.type === 'I' ? 'Âme' : 'Parois de hauteur h', m.cl.web)}${clRow(S.type === 'L' ? 'Cornière (b + h)/2t (≤ 11,5ε)' : S.type === 'I' ? 'Semelle' : 'Parois de largeur b', m.cl.flange)}
+            ${clRow(S.type === 'L' ? 'Cornière h/t (≤ 15ε)' : S.type === 'RECT' ? 'Rectangle plein (grand côté / petit côté)' : S.type === 'CHS' ? 'Tube d/t' : S.type === 'I' ? 'Âme' : 'Parois de hauteur h', m.cl.web)}${clRow(S.type === 'L' ? 'Cornière (b + h)/2t (≤ 11,5ε)' : S.type === 'I' ? 'Semelle' : 'Parois de largeur b', m.cl.flange)}
           </tbody></table>
           ${S.type === 'L' ? `<p class="note">Cornières (tableau 5.2, feuille 3) : classe 3 si h/t ≤ 15ε et (b + h)/(2t) ≤ 11,5ε, sinon classe 4 ; résistance élastique dans tous les cas. Classe 4 : A<sub>eff</sub> avec les ailes en console (EN 1993-1-5, k<sub>σ</sub> = 0,43, c = aile − t)${P.ae ? ` = ${fmt(P.Aeff / 100, 2)} cm² (ρ<sub>h</sub> = ${fmt(P.ae.rw, 3)}, ρ<sub>b</sub> = ${fmt(P.ae.rf, 3)}) ; W<sub>el</sub> réduit par ρ<sub>min</sub> (approximation)` : ''}.</p>` : ''}
-          <p class="note"${S.type === 'L' ? ' hidden' : ''}>c<sub>âme</sub> = h − 2t<sub>f</sub> − 2r ; c<sub>semelle</sub> = (b − t<sub>w</sub>)/2 − r ; tubes : c = h − 3t (NF EN 1993-1-1 tableau 5.2). Pour l'âme en flexion composée : α = ½·(1 + N<sub>Ed</sub>/(c·t<sub>w</sub>·f<sub>y</sub>)), ψ = 2N<sub>Ed</sub>/(A·f<sub>y</sub>) − 1. Compression seule : classe ${P.cN.cls}${P.ae ? `, A<sub>eff</sub> = ${fmt(P.Aeff / 100, 2)} cm² (ρ<sub>âme</sub> = ${fmt(P.ae.rw, 3)}, ρ<sub>semelle</sub> = ${fmt(P.ae.rf, 3)})` : ''} ; flexion seule : classe ${P.cMy.cls}.</p>
+          ${S.type === 'RECT' ? `<p class="note">Section pleine : pas de paroi mince au sens du tableau 5.2, donc pas de voilement local — classe 1 (résistance plastique). Interaction N–M : M<sub>N</sub> = M<sub>pl</sub>·(1 − n²) (exact pour le rectangle) ; flexion déviée avec α = β = 1 (6.2.9.1(6), prudent). Cisaillement : A<sub>v</sub> = A (6.2.6(3) g).</p>` : ''}
+          <p class="note"${S.type === 'L' || S.type === 'RECT' ? ' hidden' : ''}>c<sub>âme</sub> = h − 2t<sub>f</sub> − 2r ; c<sub>semelle</sub> = (b − t<sub>w</sub>)/2 − r ; tubes : c = h − 3t (NF EN 1993-1-1 tableau 5.2). Pour l'âme en flexion composée : α = ½·(1 + N<sub>Ed</sub>/(c·t<sub>w</sub>·f<sub>y</sub>)), ψ = 2N<sub>Ed</sub>/(A·f<sub>y</sub>) − 1. Compression seule : classe ${P.cN.cls}${P.ae ? `, A<sub>eff</sub> = ${fmt(P.Aeff / 100, 2)} cm² (ρ<sub>âme</sub> = ${fmt(P.ae.rw, 3)}, ρ<sub>semelle</sub> = ${fmt(P.ae.rf, 3)})` : ''} ; flexion seule : classe ${P.cMy.cls}.</p>
           <div class="sub-title">Résistance des sections — § 6.2 (x = ${fmt(c.secSt.x, 2)} m)</div>
           <table class="tbl compact"><tbody>
             ${line('N<sub>pl,Rd</sub> = A·f<sub>y</sub>/γ<sub>M0</sub>', kN(s.Npl) + ' kN')}
@@ -445,7 +449,7 @@
         <td><button class="btn sm" data-act="useSec" data-v="${esc(it.name)}">Utiliser</button></td></tr>`;
     }).join('');
     app.innerHTML = `<div class="page">
-      ${blockHead('—', 'Sections', `${nAll} profils, dont ${nAdd} ajoutés au classeur d'origine. Caractéristiques calculées depuis les dimensions (congés de raccordement inclus ; IPN : valeurs tabulées). Les tubes existent en finis à chaud (EN 10210-2) et formés à froid (EN 10219-2), sélection dans l'onglet Vérification.`)}
+      ${blockHead('—', 'Sections', `${nAll} profils, dont ${nAdd} ajoutés au classeur d'origine. Caractéristiques calculées depuis les dimensions (congés de raccordement inclus ; IPN : valeurs tabulées). Les tubes existent en finis à chaud (EN 10210-2) et formés à froid (EN 10219-2), sélection dans l'onglet Vérification de section.`)}
       <div class="chips" style="margin-bottom:16px">${chips}</div>
       <div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>Profil</th><th class="num">h</th><th class="num">b</th><th class="num">t<sub>w</sub></th><th class="num">t<sub>f</sub></th><th class="num">kg/m</th><th class="num">A cm²</th><th class="num">I<sub>y</sub> cm⁴</th><th class="num">W<sub>pl,y</sub> cm³</th><th class="num">I<sub>z</sub> cm⁴</th><th class="num">W<sub>pl,z</sub> cm³</th><th class="num">I<sub>t</sub> cm⁴</th><th class="num">I<sub>w</sub> cm⁶</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
     </div>`;

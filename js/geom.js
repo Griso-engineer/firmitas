@@ -101,6 +101,20 @@
     });
   }
 
+  // ---------- rectangle plein (plat, fer plat, raidisseur) ----------
+  /* h selon z (plan de M_y), b selon y. I_t de Saint-Venant (Roark, tableau 10.7) avec a = grand côté, c = petit côté :
+     I_t = a·c³·[1/3 − 0,21·(c/a)·(1 − (c/a)⁴/12)] ; I_w négligé (= 0, prudent). A_v = A (6.2.6(3) g). */
+  function rect(h, b) {
+    const A = h * b, a = Math.max(h, b), c = Math.min(h, b), q = c / a;
+    const It = a * c * c * c * (1 / 3 - 0.21 * q * (1 - Math.pow(q, 4) / 12));
+    const f = (x) => String(x).replace('.', ',');
+    return finish({
+      type: 'RECT', fab: 'hot', name: `Plat ${f(h)} × ${f(b)}`, h, b, t: c, tw: b, tf: h, r: 0,
+      A, Iy: b * h * h * h / 12, Iz: h * b * b * b / 12, Wely: b * h * h / 6, Welz: h * b * b / 6, Wply: b * h * h / 4, Wplz: h * b * b / 4,
+      It, Iw: 0, Avz: A, Avy: A, hw: 0, cw: 0, cf: 0
+    });
+  }
+
   // ---------- cornières (EN 10056-1) ----------
   /* Aile h selon z (verticale), aile b selon y (horizontale), épaisseur t, congé de pied r1 (arrondis d'extrémité
      négligés, < 0,5 % de l'aire). Caractéristiques calculées dans les axes géométriques puis principaux :
@@ -153,5 +167,5 @@
     });
   }
 
-  window.FirmitasGeom = { iSection, ipn, rhs, chs, angle, RHO };
+  window.FirmitasGeom = { iSection, ipn, rhs, chs, angle, rect, RHO };
 })();

@@ -42,6 +42,10 @@
       const h = num(p.h), b = num(p.b);
       return h > 3 * t && b > 3 * t && t > 0 ? GEO.rhs(h, b, t, c.fab) : null;
     }
+    if (c.kind === 'rect') {
+      const p = c.rect || {}, h = num(p.h), b = num(p.b);
+      return h > 0 && b > 0 ? GEO.rect(h, b) : null;
+    }
     return D.findSection(c.fam, c.name, c.fab);
   }
 
@@ -77,6 +81,11 @@
       flange = { ct: c2, mode, cls: k === 4 && !(c2 <= l2) ? 4 : 3, lim: [l2, l2, l2], angle: true };
       return { cls: k, web, flange, eps };
     }
+    if (S.type === 'RECT') {
+      // section pleine : pas de parois minces au sens du tableau 5.2, pas de voilement local → classe 1
+      web = { ct: Math.max(S.h, S.b) / S.t, mode: any ? 'solid' : 'none', cls: 1, lim: null };
+      return { cls: 1, web, flange: null, eps, solid: true };
+    }
     if (S.type === 'CHS') {
       const lim = [50 * eps * eps, 70 * eps * eps, 90 * eps * eps], ct = S.d / S.t;
       web = { ct, mode: any ? 'tube' : 'none', cls: any ? clsOf(ct, lim) : 1, lim };
@@ -104,7 +113,7 @@
 
   // Aire efficace en compression uniforme (EN 1993-1-5 § 4.4) — sections de classe 4
   function aeff(S, fy) {
-    if (S.type === 'CHS') return null;
+    if (S.type === 'CHS' || S.type === 'RECT') return null;
     const eps = Math.sqrt(235 / fy);
     const rin = (ct) => { const lp = ct / (28.4 * eps * 2); return lp <= 0.673 ? 1 : Math.min(1, (lp - 0.22) / (lp * lp)); };
     const rout = (ct) => { const lp = ct / (28.4 * eps * Math.sqrt(0.43)); return lp <= 0.748 ? 1 : Math.min(1, (lp - 0.188) / (lp * lp)); };
@@ -168,7 +177,11 @@
     const isI = S.type === 'I';
     if (cls <= 2) {
       let MyV, MzV, NV, MNy, MNz, al, be;
-      if (isI) {
+      if (S.type === 'RECT') {
+        // section pleine : A_v = A, limite d'élasticité réduite (1 − ρ) sur toute la section (6.2.8(3))
+        MyV = S.Wply * (1 - rz) * fyd; MzV = S.Wplz * (1 - ry) * fyd;
+        NV = Math.max(1e-9, S.A * (1 - Math.max(rz, ry))) * fyd;
+      } else if (isI) {
         const Aw = S.hw * S.tw;
         MyV = Math.max(0, S.Wply - rz * Aw * Aw / (4 * S.tw)) * fyd;
         MzV = Math.max(0, S.Wplz - ry * S.tf * S.b * S.b / 2) * fyd;
@@ -179,7 +192,11 @@
         NV = Math.max(1e-9, S.A - rz * 2 * (S.h - 2 * S.t) * S.t - ry * 2 * (S.b - 2 * S.t) * S.t) * fyd;
       }
       const n = aN / NV;
-      if (isI) {
+      if (S.type === 'RECT') {
+        // interaction plastique exacte du rectangle : M_N = M_pl·(1 − n²) ; flexion déviée α = β = 1 (6.2.9.1(6), prudent)
+        MNy = MyV * Math.max(0, 1 - n * n); MNz = MzV * Math.max(0, 1 - n * n);
+        al = be = 1;
+      } else if (isI) {
         const a = Math.min((S.A - 2 * S.b * S.tf) / S.A, 0.5);
         MNy = MyV * Math.min(1, Math.max(0, (1 - n) / (1 - 0.5 * a)));
         MNz = n <= a ? MzV : MzV * Math.max(0, 1 - Math.pow((n - a) / (1 - a), 2));
@@ -217,6 +234,7 @@
   function curves(S, grade) {
     const hi = grade === 'S460';
     if (S.type === 'L') return { y: 'b', z: 'b' };                 // tableau 6.2 : cornières, courbe b
+    if (S.type === 'RECT') return { y: 'c', z: 'c' };              // tableau 6.2 : sections pleines, courbe c
     if (S.type === 'I') {
       if (S.fab === 'welded') return S.tf <= 40 ? { y: 'b', z: 'c' } : { y: 'c', z: 'd' };
       if (S.h / S.b > 1.2) return S.tf <= 40 ? { y: hi ? 'a0' : 'a', z: hi ? 'a0' : 'b' } : { y: hi ? 'a' : 'b', z: hi ? 'a' : 'c' };
@@ -326,14 +344,14 @@
     if (S.type === 'CHS') { lt.skip = 'tube rond : non sujet au déversement'; lt.chi = 1; lt.lam = 0; lt.Mcr = Infinity; }
     else if (stab.restrained || !(stab.LLT > 0)) { lt.skip = 'semelle comprimée maintenue en continu'; lt.chi = 1; lt.lam = 0; lt.Mcr = Infinity; }
     else {
-      lt.Mcr = mcr(S, stab.LLT, stab.k, stab.kw, lt.C1, S.type === 'I' ? lt.C2 : 0, S.type === 'I' ? stab.zg : 0);
+      lt.Mcr = mcr(S, stab.LLT, stab.k, stab.kw, lt.C1, S.type === 'I' || S.type === 'RECT' ? lt.C2 : 0, S.type === 'I' || S.type === 'RECT' ? stab.zg : 0);
       lt.lam = Math.sqrt(MyRk / lt.Mcr);
       const x = chi(lt.lam, lt.alpha);
       lt.phi = x.phi; lt.chi = x.chi;
       if (S.type === 'RHS' && lt.lam <= 0.4) { lt.chi = 1; lt.skip = 'tube : λ̄_LT ≤ 0,4, déversement négligé (6.3.2.2(4))'; }
     }
     lt.MbRd = lt.chi * MyRk / g1;
-    const sens = S.type === 'I' && !(stab.restrained || !(stab.LLT > 0));
+    const sens = (S.type === 'I' || (S.type === 'RECT' && S.h > S.b)) &&!(stab.restrained || !(stab.LLT > 0));
 
     // --- facteurs Cm (tableau B.3) et k_ij (annexe B, méthode 2)
     const sway = stab.sway || stab.bc === 'c';
@@ -439,7 +457,7 @@
       R.warnings.push(S.type === 'CHS' ? 'Tube rond de classe 4 (d/t > 90ε²) : hors du champ de l\'EN 1993-1-1 (voir EN 1993-1-6).' : 'Section de classe 4 en flexion simple : module efficace W_eff non calculé par Firmitas (EN 1993-1-5).');
     }
     const epsw = Math.sqrt(235 / fy);
-    if (S.type !== 'CHS' && S.hw / S.tw > 72 * epsw) R.warnings.push(`Âme élancée : h_w/t_w = ${(S.hw / S.tw).toFixed(1)} > 72ε = ${(72 * epsw).toFixed(1)} — résistance au voilement par cisaillement à vérifier (EN 1993-1-5 § 5).`);
+    if (S.type !== 'CHS' && S.type !== 'RECT' && S.hw / S.tw > 72 * epsw) R.warnings.push(`Âme élancée : h_w/t_w = ${(S.hw / S.tw).toFixed(1)} > 72ε = ${(72 * epsw).toFixed(1)} — résistance au voilement par cisaillement à vérifier (EN 1993-1-5 § 5).`);
     if (!R.valid && !(L > 0)) return R;
 
     const gam = s.gam || {};
