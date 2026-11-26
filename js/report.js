@@ -46,7 +46,7 @@
       <p>L = ${fmt(R.L, 2)} m · ${D.BC[s.bc].label.toLowerCase()} · vérification selon NF EN 1990 et NF EN 1993-1-1 avec annexes nationales françaises</p></div>
       ${H2('Hypothèses')}
       <div class="rp-fig">${svg}<div style="flex:1"><div class="rp-kv">
-        ${kv('Section', esc(S.name) + (S.type === 'I' ? (S.fab === 'welded' ? ' (PRS soudé)' : ' (laminé)') : S.type === 'RECT' ? ' (rectangle plein)' : S.fab === 'cold' ? ' (formé à froid)' : ' (fini à chaud)'))}${kv('Acier', `${R.grade} — f<sub>y</sub> = ${R.fy} MPa (t = ${fmtG(S.t, 1)} mm)`)}
+        ${kv('Section', esc(S.name) + (S.type === 'I' ? (S.fab === 'welded' ? ' (PRS soudé)' : ' (laminé)') : S.type === 'RECT' ? ' (rectangle plein)' : S.type === 'T' ? (S.fab === 'welded' ? ' (té soudé' : ' (té laminé') + (S.geo.down ? ', semelle en bas)' : ', semelle en haut)') : S.fab === 'cold' ? ' (formé à froid)' : ' (fini à chaud)'))}${kv('Acier', `${R.grade} — f<sub>y</sub> = ${R.fy} MPa (t = ${fmtG(S.t, 1)} mm)`)}
         ${kv('γ<sub>M0</sub> / γ<sub>M1</sub>', fmt(R.g0, 2) + ' / ' + fmt(R.g1, 2))}${kv('Masse', fmt(S.G, 1) + ' kg/m')}
         ${kv('A / A<sub>v,z</sub>', `${fmt(S.A / 100, 1)} / ${fmt(S.Avz / 100, 1)} cm²`)}${kv('I<sub>y</sub> / I<sub>z</sub>', `${fmtG(S.Iy / 1e4, 0)} / ${fmtG(S.Iz / 1e4, 0)} cm⁴`)}
         ${kv('W<sub>pl,y</sub> / W<sub>el,y</sub>', `${fmtG(S.Wply / 1e3, 1)} / ${fmtG(S.Wely / 1e3, 1)} cm³`)}${kv('W<sub>pl,z</sub> / W<sub>el,z</sub>', `${fmtG(S.Wplz / 1e3, 1)} / ${fmtG(S.Welz / 1e3, 1)} cm³`)}
@@ -68,9 +68,9 @@
         ${line(`M<sub>y,V,Rd</sub> (W<sub>${sc.cls <= 2 ? 'pl' : 'el'}</sub>${sc.rhoz > 0 ? ', ρ = ' + fmt(sc.rhoz, 3) : ''})`, `${kNm(sc.MyRd)} kN·m`)}
         ${line('Flambement y', `L<sub>cr</sub> = ${fmt(m.y.Lcr / 1000, 2)} m ; λ̄ = ${fmt(m.y.lam, 3)} ; courbe ${m.y.curve} ; χ<sub>y</sub> = ${fmt(m.y.chi, 3)} ; N<sub>b,y,Rd</sub> = ${kN(m.y.NbRd)} kN`)}
         ${line('Flambement z', `L<sub>cr</sub> = ${fmt(m.z.Lcr / 1000, 2)} m ; λ̄ = ${fmt(m.z.lam, 3)} ; courbe ${m.z.curve} ; χ<sub>z</sub> = ${fmt(m.z.chi, 3)} ; N<sub>b,z,Rd</sub> = ${kN(m.z.NbRd)} kN`)}
-        ${m.tf ? line('Flexion-torsion', `N<sub>cr,TF</sub> = ${kN(m.tf.Ncr)} kN ; λ̄ = ${fmt(m.tf.lam, 3)} ; courbe ${m.tf.curve} ; χ<sub>TF</sub> = ${fmt(m.tf.chi, 3)} ; N<sub>b,TF,Rd</sub> = ${kN(m.tf.NbRd)} kN (centre de cisaillement au talon)`) : ''}
+        ${m.tf ? line('Flexion-torsion', `N<sub>cr,TF</sub> = ${kN(m.tf.Ncr)} kN ; λ̄ = ${fmt(m.tf.lam, 3)} ; courbe ${m.tf.curve} ; χ<sub>TF</sub> = ${fmt(m.tf.chi, 3)} ; N<sub>b,TF,Rd</sub> = ${kN(m.tf.NbRd)} kN (centre de cisaillement ${S.type === 'T' ? 'à la jonction âme–semelle' : 'au talon'})`) : ''}
         ${m.bb ? line('Annexe BB.1.2', 'cornière de treillis attachée par une aile : λ̄<sub>eff,v</sub> = 0,35 + 0,7·λ̄<sub>v</sub> ; λ̄<sub>eff,u</sub> = 0,50 + 0,7·λ̄<sub>u</sub>') : ''}
-        ${line('Déversement', m.lt.skip ? sub(m.lt.skip) : `C<sub>1</sub> = ${fmt(m.lt.C1, 3)} ; C<sub>2</sub> = ${fmt(m.lt.C2, 3)} ; M<sub>cr</sub> = ${kNm(m.lt.Mcr)} kN·m ; λ̄<sub>LT</sub> = ${fmt(m.lt.lam, 3)} ; courbe ${m.lt.curve} ; χ<sub>LT</sub> = ${fmt(m.lt.chi, 3)} ; M<sub>b,Rd</sub> = ${kNm(m.lt.MbRd)} kN·m`)}
+        ${line('Déversement', m.lt.skip ? sub(m.lt.skip) : `C<sub>1</sub> = ${fmt(m.lt.C1, 3)} ; C<sub>2</sub> = ${fmt(m.lt.C2, 3)}${m.lt.cases ? ` ; C<sub>3</sub>·z<sub>j</sub> = ${fmt(m.lt.C3, 3)} × ${fmtG(m.lt.zj, 1)} mm (${m.lt.fc ? 'semelle' : 'âme'} comprimée)` : ''} ; M<sub>cr</sub> = ${kNm(m.lt.Mcr)} kN·m ; λ̄<sub>LT</sub> = ${fmt(m.lt.lam, 3)} ; courbe ${m.lt.curve} ; χ<sub>LT</sub> = ${fmt(m.lt.chi, 3)} ; M<sub>b,Rd</sub> = ${kNm(m.lt.MbRd)} kN·m`)}
         ${line('Interaction (annexe B)', `C<sub>my</sub> = ${fmt(m.cmy.cm, 3)} ; C<sub>mz</sub> = ${fmt(m.cmz.cm, 3)} ; k<sub>yy</sub> = ${fmt(m.kyy, 3)} ; k<sub>yz</sub> = ${fmt(m.kyz, 3)} ; k<sub>zy</sub> = ${fmt(m.kzy, 3)} ; k<sub>zz</sub> = ${fmt(m.kzz, 3)}`)}
         ${line(`Critère dimensionnant — ${c.gov ? E.CRITERIA[c.gov].ref : ''}`, `${c.gov ? sub(E.CRITERIA[c.gov].label) : '—'} = <b>${fmt(c.max, 3)}</b> ${c.max <= 1 ? '≤ 1' : '&gt; 1'}`)}
       </div>`;

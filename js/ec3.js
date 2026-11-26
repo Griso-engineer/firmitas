@@ -46,7 +46,36 @@
       const p = c.rect || {}, h = num(p.h), b = num(p.b);
       return h > 0 && b > 0 ? GEO.rect(h, b) : null;
     }
-    return D.findSection(c.fam, c.name, c.fab);
+    let S;
+    if (c.kind === 'tee') {
+      const p = c.tee || {}, h = num(p.h), b = num(p.b), tw = num(p.tw), tf = num(p.tf);
+      if (!(h > tf && b > tw && tw > 0 && tf > 0)) return null;
+      const f = (x) => String(x).replace('.', ',');
+      S = GEO.tee(`T soudé ${f(h)} × ${f(b)} × ${f(tw)} × ${f(tf)}`, h, b, tw, tf, 0, 0, 0, 'welded');
+    } else S = D.findSection(c.fam, c.name, c.fab);
+    if (S && S.type === 'T') S.geo.down = c.tOri === 'down';       // té renversé : semelle en bas
+    return S;
+  }
+  // té : la semelle est-elle comprimée sous un moment M_y de signe sg (> 0 : fibre supérieure comprimée) ?
+  const teeFlangeComp = (S, sg) => (sg >= 0) !== !!S.geo.down;
+
+  /* Paroi en console (tableau 5.2, feuille 2) — âme de té fléchie : α plastique, ψ élastique,
+     k_σ de l'EN 1993-1-5 tableau 4.2 (extrémité libre la plus comprimée, ou bord tenu le plus comprimé). */
+  function outstand(ct, eps, sTip, sRoot, alpha) {
+    // sTip, sRoot : contraintes élastiques (compression > 0) à l'extrémité libre et au bord tenu
+    const s1 = Math.max(sTip, sRoot);
+    if (!(s1 > 0)) return { ct, mode: 'none', cls: 1, lim: null };
+    if (Math.abs(sTip - sRoot) <= 1e-9 * s1) {
+      const lim = [9 * eps, 10 * eps, 14 * eps];
+      return { ct, mode: 'comp', cls: clsOf(ct, lim), lim };
+    }
+    const tipC = sTip >= sRoot, psi = clamp((tipC ? sRoot : sTip) / s1, -3, 1);
+    const ks = tipC ? 0.57 - 0.21 * psi + 0.07 * psi * psi
+      : (psi >= 0 ? 0.578 / (psi + 0.34) : 1.7 - 5 * psi + 17.1 * psi * psi);
+    const a = clamp(alpha, 1e-3, 1);
+    const lim = tipC ? [9 * eps / a, 10 * eps / a, 21 * eps * Math.sqrt(ks)] : [9 * eps / (a * Math.sqrt(a)), 10 * eps / (a * Math.sqrt(a)), 21 * eps * Math.sqrt(ks)];
+    lim[1] = Math.max(lim[1], lim[0]); lim[2] = Math.max(lim[2], lim[1]);
+    return { ct, mode: tipC ? 'tipc' : 'tipt', cls: clsOf(ct, lim), lim, alpha: a, psi, ks };
   }
 
   // ---------- classification (tableau 5.2) ----------
@@ -80,6 +109,24 @@
       web = { ct: c1, mode, cls: k === 4 && !(c1 <= l1) ? 4 : 3, lim: [l1, l1, l1], angle: true };
       flange = { ct: c2, mode, cls: k === 4 && !(c2 <= l2) ? 4 : 3, lim: [l2, l2, l2], angle: true };
       return { cls: k, web, flange, eps };
+    }
+    if (S.type === 'T') {
+      // té : semelle en console (comprimée si N, M_z, ou M_y qui la comprime) ; âme en console fléchie (tableau 5.2, feuille 2)
+      const sg = My >= 0 ? 1 : -1, fc = teeFlangeComp(S, sg);
+      const ctf = S.cf / S.tf, limf = [9 * eps, 10 * eps, 14 * eps];
+      const fComp = comp || hasMz || (hasMy && fc);
+      flange = { ct: ctf, mode: fComp ? 'out' : 'none', cls: fComp ? clsOf(ctf, limf) : 1, lim: limf };
+      // contraintes élastiques (compression > 0) ; z vers la semelle depuis G : extrémité d'âme z = z_c − h, racine z = z_c − t_f
+      const zt = S.geo.zc - S.h, zr = S.geo.zc - S.tf, mf = (fc ? 1 : -1) * Math.abs(hasMy ? My : 0);
+      const sT = N / S.A + mf * zt / S.Iy, sR = N / S.A + mf * zr / S.Iy;
+      // α plastique : aire comprimée A_c = (A + N/f_y)/2 (semelle b·t_f + âme t_w·(h − t_f), congés négligés)
+      const Ac = clamp((S.A + N / fy) / 2, 0, S.A), hs = S.h - S.tf, Af = S.b * S.tf;
+      let alpha;
+      if (!hasMy) alpha = 1;
+      else if (fc) alpha = clamp((Ac - Af) / (S.tw * hs), 0, 1);
+      else alpha = clamp(Ac / (S.tw * hs), 0, 1);
+      web = outstand(S.cw / S.tw, eps, sT, sR, alpha);
+      return { cls: Math.max(web.cls, flange.cls), web, flange, eps };
     }
     if (S.type === 'RECT') {
       // section pleine : pas de parois minces au sens du tableau 5.2, pas de voilement local → classe 1
@@ -121,6 +168,11 @@
       // ailes en console (EN 1993-1-5 tableau 4.2, ψ = 1, k_σ = 0,43), largeur c = aile − t
       const rh = rout((S.h - S.t) / S.t), rb = rout((S.b - S.t) / S.t);
       return { A: S.A - (1 - rh) * (S.h - S.t) * S.t - (1 - rb) * (S.b - S.t) * S.t, rw: rh, rf: rb };
+    }
+    if (S.type === 'T') {
+      // compression uniforme : semelle (2 consoles) et âme (console), k_σ = 0,43 ; décalage e_N du centre de gravité négligé
+      const rw = rout(S.cw / S.tw), rf = rout(S.cf / S.tf);
+      return { A: S.A - (1 - rw) * S.cw * S.tw - 2 * (1 - rf) * S.cf * S.tf, rw, rf };
     }
     if (S.type === 'I') {
       const rw = rin(S.cw / S.tw), rf = rout(S.cf / S.tf);
@@ -177,7 +229,11 @@
     const isI = S.type === 'I';
     if (cls <= 2) {
       let MyV, MzV, NV, MNy, MNz, al, be;
-      if (S.type === 'RECT') {
+      if (S.type === 'T') {
+        // té : (1 − ρ) appliqué à toute la section (prudent : l'âme seule porte V_z)
+        MyV = S.Wply * (1 - rz) * fyd; MzV = S.Wplz * (1 - ry) * fyd;
+        NV = Math.max(1e-9, S.A * (1 - Math.max(rz, ry))) * fyd;
+      } else if (S.type === 'RECT') {
         // section pleine : A_v = A, limite d'élasticité réduite (1 − ρ) sur toute la section (6.2.8(3))
         MyV = S.Wply * (1 - rz) * fyd; MzV = S.Wplz * (1 - ry) * fyd;
         NV = Math.max(1e-9, S.A * (1 - Math.max(rz, ry))) * fyd;
@@ -192,7 +248,12 @@
         NV = Math.max(1e-9, S.A - rz * 2 * (S.h - 2 * S.t) * S.t - ry * 2 * (S.b - 2 * S.t) * S.t) * fyd;
       }
       const n = aN / NV;
-      if (S.type === 'RECT') {
+      if (S.type === 'T') {
+        // té : interaction plastique exacte par intégration (axe neutre plastique déplacé par N ; axe y : côté le plus défavorable) ;
+        // flexion déviée α = β = 1 (6.2.9.1(6), prudent)
+        MNy = n >= 1 ? 0 : MyV * S.mn('y', n) / S.Wply; MNz = n >= 1 ? 0 : MzV * S.mn('z', n) / S.Wplz;
+        al = be = 1;
+      } else if (S.type === 'RECT') {
         // interaction plastique exacte du rectangle : M_N = M_pl·(1 − n²) ; flexion déviée α = β = 1 (6.2.9.1(6), prudent)
         MNy = MyV * Math.max(0, 1 - n * n); MNz = MzV * Math.max(0, 1 - n * n);
         al = be = 1;
@@ -234,7 +295,7 @@
   function curves(S, grade) {
     const hi = grade === 'S460';
     if (S.type === 'L') return { y: 'b', z: 'b' };                 // tableau 6.2 : cornières, courbe b
-    if (S.type === 'RECT') return { y: 'c', z: 'c' };              // tableau 6.2 : sections pleines, courbe c
+    if (S.type === 'RECT' || S.type === 'T') return { y: 'c', z: 'c' };   // tableau 6.2 : sections pleines, U et T, courbe c
     if (S.type === 'I') {
       if (S.fab === 'welded') return S.tf <= 40 ? { y: 'b', z: 'c' } : { y: 'c', z: 'd' };
       if (S.h / S.b > 1.2) return S.tf <= 40 ? { y: hi ? 'a0' : 'a', z: hi ? 'a0' : 'b' } : { y: hi ? 'a' : 'b', z: hi ? 'a' : 'c' };
@@ -253,11 +314,27 @@
     const phi = 0.5 * (1 + alpha * (lam - 0.2) + lam * lam);
     return { phi, chi: Math.min(1, 1 / (phi + Math.sqrt(Math.max(0, phi * phi - lam * lam)))) };
   }
-  function mcr(S, L, k, kw, C1, C2, zg) {
+  // ENV 1993-1-1 annexe F (F.2) : terme (C2·z_g − C3·z_j) ; z_j > 0 si la semelle la plus large est comprimée
+  function mcr(S, L, k, kw, C1, C2, zg, C3 = 0, zj = 0) {
     if (!(L > 0)) return Infinity;
     const kL = k * L, a = PI * PI * E * S.Iz / (kL * kL);
-    const c2 = C2 * zg;
+    const c2 = C2 * zg - C3 * zj;
     return C1 * a * (Math.sqrt(Math.pow(k / kw, 2) * S.Iw / S.Iz + kL * kL * Gs * S.It / (PI * PI * E * S.Iz) + c2 * c2) - c2);
+  }
+  /* C3 (ENV 1993-1-1 tableaux F.1.1 et F.1.2, k = 1) pour un té :
+     z_j < 0 (âme comprimée, défavorable) : C3 = 1,0 (valeur maximale des tableaux, prudent) ;
+     z_j > 0 (semelle comprimée, favorable) : moments d'extrémité C3(ψ) interpolé, charge répartie 0,525, concentrée 0,411. */
+  const C3TAB = [[1, 1], [0.75, 0.998], [0.5, 0.992], [0.25, 0.977], [0, 0.939], [-0.25, 0.855], [-0.5, 0.676], [-0.75, 0.366], [-1, 0]];
+  function c3Auto(zj, m, load) {
+    if (zj <= 0) return 1;
+    if (load) return load === 'C' ? 0.411 : 0.525;
+    const a1 = Math.abs(m[0]), a2 = Math.abs(m[4]), Mh = a1 >= a2 ? m[0] : m[4], Mo = a1 >= a2 ? m[4] : m[0];
+    const psi = Math.abs(Mh) > 0 ? clamp(Mo / Mh, -1, 1) : 1;
+    for (let i = 0; i < C3TAB.length - 1; i++) {
+      const [p0, c0] = C3TAB[i], [p1, c1] = C3TAB[i + 1];
+      if (psi <= p0 && psi >= p1) return c0 + (c1 - c0) * (psi - p0) / (p1 - p0);
+    }
+    return 0;
   }
   // Facteur de moment uniforme équivalent, tableau B.3. M1, M2 : moments d'extrémité, Ms : moment à mi-longueur (signés).
   function cmB3(M1, Ms, M2, load, linear) {
@@ -308,7 +385,8 @@
     // cornières : flambement par torsion et flexion-torsion (6.3.1.4), centre de cisaillement excentré (u0, v0) ;
     // N_cr,TF = plus petite racine de (N − N_u)(N − N_v)(N − N_T) − N²(N − N_u)·v0²/i0² − N²(N − N_v)·u0²/i0² = 0
     let tf = null;
-    if (S.type === 'L') {
+    if (S.type === 'L' || S.type === 'T') {
+      // té : u0 = 0, v0 = z0 (centre de cisaillement sur l'axe de symétrie z) → couplage flexion autour de z – torsion
       const g = S.geo, LT = stab.Lcrz;
       const Nu = y.Ncr, Nv = z.Ncr, i02 = (S.Iy + S.Iz) / S.A + g.u0 * g.u0 + g.v0 * g.v0;
       const NT = LT > 0 ? (Gs * S.It + PI * PI * E * S.Iw / (LT * LT)) / i02 : Infinity;
@@ -343,6 +421,23 @@
     lt.curve = ltCurve(S); lt.alpha = D.ALPHA[lt.curve];
     if (S.type === 'CHS') { lt.skip = 'tube rond : non sujet au déversement'; lt.chi = 1; lt.lam = 0; lt.Mcr = Infinity; }
     else if (stab.restrained || !(stab.LLT > 0)) { lt.skip = 'semelle comprimée maintenue en continu'; lt.chi = 1; lt.lam = 0; lt.Mcr = Infinity; }
+    else if (S.type === 'T') {
+      // té (monosymétrique) : M_cr avec z_j pour chaque signe de moment ; le signe qui comprime l'âme est en général critique
+      const arr = [m[0], m[1], m[2], m[3], m[4], diag.Mymax];
+      const Mp = Math.max(0, ...arr), Mn = Math.max(0, ...arr.map((v) => -v));
+      const one = (sg, M) => {
+        const fc = teeFlangeComp(S, sg), zj = (fc ? 1 : -1) * S.geo.zj;
+        const C3 = stab.C3 != null ? stab.C3 : c3Auto(zj, m, diag.loadY);
+        const Mcr = mcr(S, stab.LLT, stab.k, stab.kw, lt.C1, lt.C2, stab.zg, C3, zj);
+        const lam = Math.sqrt(MyRk / Mcr), x = chi(lam, lt.alpha), MbRd = x.chi * MyRk / g1;
+        return { sg, M, fc, zj, C3, Mcr, lam, phi: x.phi, chi: x.chi, MbRd, r: M / MbRd };
+      };
+      const cases = [];
+      if (Mp > 0 || !(Mn > 0)) cases.push(one(1, Mp));
+      if (Mn > 0) cases.push(one(-1, Mn));
+      const gv = cases.reduce((a, c) => (c.r > a.r ? c : a), cases[0]);
+      Object.assign(lt, { Mcr: gv.Mcr, lam: gv.lam, phi: gv.phi, chi: gv.chi, zj: gv.zj, C3: gv.C3, fc: gv.fc, rT: gv.r, cases });
+    }
     else {
       lt.Mcr = mcr(S, stab.LLT, stab.k, stab.kw, lt.C1, S.type === 'I' || S.type === 'RECT' ? lt.C2 : 0, S.type === 'I' || S.type === 'RECT' ? stab.zg : 0);
       lt.lam = Math.sqrt(MyRk / lt.Mcr);
@@ -351,7 +446,7 @@
       if (S.type === 'RHS' && lt.lam <= 0.4) { lt.chi = 1; lt.skip = 'tube : λ̄_LT ≤ 0,4, déversement négligé (6.3.2.2(4))'; }
     }
     lt.MbRd = lt.chi * MyRk / g1;
-    const sens = (S.type === 'I' || (S.type === 'RECT' && S.h > S.b)) &&!(stab.restrained || !(stab.LLT > 0));
+    const sens = (S.type === 'I' || S.type === 'T' || (S.type === 'RECT' && S.h > S.b)) &&!(stab.restrained || !(stab.LLT > 0));
 
     // --- facteurs Cm (tableau B.3) et k_ij (annexe B, méthode 2)
     const sway = stab.sway || stab.bc === 'c';
@@ -381,7 +476,7 @@
     const My = Math.abs(diag.Mymax), Mz = Math.abs(diag.Mzmax);
     const r = {};
     r.Fb = Nc > 0 ? Nc / Math.min(y.NbRd, z.NbRd, tf && tf.gov ? tf.NbRd : Infinity) : 0;
-    r.LT = My / lt.MbRd;
+    r.LT = lt.rT != null ? lt.rT : My / lt.MbRd;
     r.I1 = ny + kyy * My / (lt.chi * MyRk / g1) + kyz * Mz / (MzRk / g1);
     r.I2 = nz + kzy * My / (lt.chi * MyRk / g1) + kzz * Mz / (MzRk / g1);
     return { cl, cls, NRk, MyRk, MzRk, y, z, tf, bb, lt, sens, cmy, cmz, cmLT, ny, nz, kyy, kyz, kzy, kzz, My, Mz, N: diag.N, r };
@@ -443,21 +538,25 @@
     const Lcry = (lk.Lcry !== false ? auto : num(sb.Lcry)) * 1000;
     const Lcrz = (lk.Lcrz !== false ? auto : num(sb.Lcrz)) * 1000;
     const LLT = (lk.LLT !== false ? auto : num(sb.LLT)) * 1000;
-    const zg = sb.zgMode === 'centre' ? 0 : sb.zgMode === 'bottom' ? -S.h / 2 : sb.zgMode === 'custom' ? num(sb.zg) : S.h / 2;
+    // z_g mesuré depuis le centre de cisaillement (té : jonction âme–semelle, à t_f/2 de la face extérieure de semelle)
+    const zsTop = S.type === 'T' ? (S.geo.down ? S.h - S.tf / 2 : S.tf / 2) : S.h / 2;
+    const zg = sb.zgMode === 'centre' ? 0 : sb.zgMode === 'bottom' ? -(S.h - zsTop) : sb.zgMode === 'custom' ? num(sb.zg) : zsTop;
     const stab = {
       L: L * 1000, bc: s.bc, Lcry, Lcrz, LLT, k: num(sb.k, 1) || 1, kw: num(sb.kw, 1) || 1, zg,
       C1: sb.C1mode === 'manual' && num(sb.C1) > 0 ? num(sb.C1) : null,
       C2: sb.C1mode === 'manual' ? num(sb.C2) : null,
-      restrained: !!sb.restrained, sway: !!sb.sway, bb12: !!sb.bb12
+      restrained: !!sb.restrained, sway: !!sb.sway, bb12: !!sb.bb12,
+      C3: sb.C1mode === 'manual' && sb.C3 !== '' && sb.C3 != null && Number.isFinite(parseFloat(String(sb.C3).replace(',', '.'))) ? num(sb.C3) : null
     };
     R.stab = stab;
+    if (S.type === 'T' && P.cN.cls === 4) R.warnings.push(`Té de classe 4 en compression : A_eff = ${(P.Aeff / 100).toFixed(2).replace('.', ',')} cm² (consoles, k_σ = 0,43) ; le décalage e_N du centre de gravité efficace (moment additionnel N·e_N) est négligé.`);
     if (S.type === 'L' && P.cN.cls === 4) R.warnings.push(`Cornière de classe 4 (h/t = ${(S.h / S.t).toFixed(1).replace('.', ',')}, (b + h)/2t = ${((S.b + S.h) / (2 * S.t)).toFixed(1).replace('.', ',')} pour 15ε = ${(15 * P.eps).toFixed(1).replace('.', ',')} et 11,5ε = ${(11.5 * P.eps).toFixed(1).replace('.', ',')}) : aire efficace A_eff = ${(P.Aeff / 100).toFixed(2).replace('.', ',')} cm² en compression (EN 1993-1-5, ailes en console) ; en flexion, W_el réduit du même coefficient ρ = ${P.Wfac.toFixed(3).replace('.', ',')} (approximation).`);
     if (S.type !== 'L' && (P.cMy.cls === 4 || (S.type === 'CHS' && P.cN.cls === 4))) {
       R.valid = false;
       R.warnings.push(S.type === 'CHS' ? 'Tube rond de classe 4 (d/t > 90ε²) : hors du champ de l\'EN 1993-1-1 (voir EN 1993-1-6).' : 'Section de classe 4 en flexion simple : module efficace W_eff non calculé par Firmitas (EN 1993-1-5).');
     }
     const epsw = Math.sqrt(235 / fy);
-    if (S.type !== 'CHS' && S.type !== 'RECT' && S.hw / S.tw > 72 * epsw) R.warnings.push(`Âme élancée : h_w/t_w = ${(S.hw / S.tw).toFixed(1)} > 72ε = ${(72 * epsw).toFixed(1)} — résistance au voilement par cisaillement à vérifier (EN 1993-1-5 § 5).`);
+    if (S.type !== 'CHS' && S.type !== 'RECT' && S.type !== 'T' && S.hw / S.tw > 72 * epsw) R.warnings.push(`Âme élancée : h_w/t_w = ${(S.hw / S.tw).toFixed(1)} > 72ε = ${(72 * epsw).toFixed(1)} — résistance au voilement par cisaillement à vérifier (EN 1993-1-5 § 5).`);
     if (!R.valid && !(L > 0)) return R;
 
     const gam = s.gam || {};
@@ -599,5 +698,5 @@
     return R;
   }
 
-  window.FirmitasEC3 = { compute, sectionOf, classify, prepare, sectionCheck, memberCheck, beamCase, deflection, cmB3, curves, ltCurve, chi, mcr, aeff, CRITERIA, SEC_KEYS, MEM_KEYS, num };
+  window.FirmitasEC3 = { compute, sectionOf, classify, prepare, sectionCheck, memberCheck, beamCase, deflection, cmB3, curves, ltCurve, chi, mcr, c3Auto, outstand, aeff, CRITERIA, SEC_KEYS, MEM_KEYS, num };
 })();

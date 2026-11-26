@@ -16,10 +16,10 @@
 2. Bibliothèque : caractéristiques calculées par la géométrie comparées aux valeurs tabulées du classeur.</p>
 <div id="out"></div>
 <script src="js/sections.js?v=795732d2"></script>
-<script src="js/geom.js?v=58cce37d"></script>
-<script src="js/data.js?v=6017099c"></script>
-<script src="js/ec3.js?v=94b9c048"></script>
-<script src="js/store.js?v=68891c70"></script>
+<script src="js/geom.js?v=670be3b4"></script>
+<script src="js/data.js?v=26e6f21f"></script>
+<script src="js/ec3.js?v=f66011a4"></script>
+<script src="js/store.js?v=4d69eacd"></script>
 <script src="js/xl-ref.js?v=436b5782"></script>
 <script src="js/eclisse-calc.js?v=5ad40880"></script>
 <script src="js/platsoude-calc.js?v=994c2e9c"></script>
@@ -463,6 +463,68 @@
     const mCen = E.compute(s3).env.worst.mem.lt;
     check('Charge en fibre supérieure : C2·z_g pris en compte (M_cr,dessus < M_cr,centre)', mTop.Mcr < 0.95 * mCen.Mcr && mTop.C2 > 0 ? 1 : 0, 1);
     check('… sensible à la torsion : k_zy de la méthode 2 pour profils ouverts', E.compute(s3).env.worst.mem.sens ? 1 : 0, 1);
+  }
+
+  // ------------------------------------------------------------------
+  // M. Tés — EN 10055 (catalogue) et té soudé 200 × 150 × 10 × 15 (calculs manuels par rectangles)
+  // ------------------------------------------------------------------
+  title('M · Tés — catalogue EN 10055, té soudé : géométrie, classification, flexion-torsion, déversement avec z_j');
+  {
+    const cat = (nm) => D.findSection('T (EN 10055)', nm);
+    check('Catalogue : 14 tés EN 10055 (T 20 à T 140)', D.CATALOG['T (EN 10055)'].length, 14);
+    const t20 = cat('T 20 × 20 × 3');
+    check('T 20 × 20 × 3 : e = 5,8 mm (capture Euronorme 55-80)', t20.geo.zc, 5.8, 0.03);
+    const t100 = cat('T 100 × 100 × 11');
+    check('T 100 × 100 × 11 : A [cm²] (catalogue usuel 20,9)', t100.A / 100, 20.9, 0.03);
+    check('… e [cm] (catalogue usuel 2,74)', t100.geo.zc / 10, 2.74, 0.03);
+    check('… I_y [cm⁴] (catalogue usuel 179)', t100.Iy / 1e4, 179, 0.03);
+    check('… I_z [cm⁴] (catalogue usuel 88,3)', t100.Iz / 1e4, 88.3, 0.03);
+    // té soudé, sans congés ni dépouilles : formules des rectangles
+    const h = 200, b = 150, tw = 10, tf = 15, hs = h - tf;
+    const T = G.tee('T', h, b, tw, tf, 0, 0, 0, 'welded');
+    const Af = b * tf, Aw = hs * tw, A = Af + Aw, zc = (Af * tf / 2 + Aw * (tf + hs / 2)) / A;
+    const Iy = b * tf ** 3 / 12 + Af * (zc - tf / 2) ** 2 + tw * hs ** 3 / 12 + Aw * (tf + hs / 2 - zc) ** 2;
+    const Iz = tf * b ** 3 / 12 + hs * tw ** 3 / 12;
+    const sp = A / 2 / b, Wpl = b * sp * sp / 2 + b * (tf - sp) ** 2 / 2 + Aw * (tf + hs / 2 - sp);
+    check('Té soudé 200 × 150 × 10 × 15 : A [mm²]', T.A, A, 1e-6);
+    check('… e = Σ A·s / A [mm]', T.geo.zc, zc, 1e-5);
+    check('… I_y (Huygens) [cm⁴]', T.Iy / 1e4, Iy / 1e4, 1e-5);
+    check('… I_z [cm⁴]', T.Iz / 1e4, Iz / 1e4, 1e-5);
+    check('… W_pl,y (axe neutre plastique dans la semelle, à A/(2b)) [cm³]', T.Wply / 1e3, Wpl / 1e3, 1e-5);
+    check('… W_el,y = I_y / max(e, h − e) [cm³]', T.Wely / 1e3, Iy / (h - zc) / 1e3, 1e-5);
+    // z_j = z_s − ½·∫(y² + z²)z dA / I_y (z vers la semelle depuis G) : rectangles
+    const rint = (w, z1, z2) => w ** 3 / 12 * (z2 * z2 - z1 * z1) / 2 + w * (z2 ** 4 - z1 ** 4) / 4;
+    const Kz = rint(b, zc - tf, zc) + rint(tw, zc - h, zc - tf), zj = (zc - tf / 2) - 0.5 * Kz / Iy;
+    check('… z_j (ENV annexe F, semelle comprimée) [mm]', T.geo.zj, zj, 1e-4);
+    check('… M_N,y(n = 0) = W_pl,y ; M_N,z(0) = W_pl,z', T.mn('y', 0) / T.Wply + T.mn('z', 0) / T.Wplz, 2, 1e-3);
+    check('… M_N décroissant, nul à n = 1', T.mn('y', 0.6) < T.mn('y', 0.3) && T.mn('z', 0.6) < T.mn('z', 0.3) && T.mn('y', 1) === 0 ? 1 : 0, 1);
+    // classification S355 : âme c/t = 18,5 > 14ε = 11,4 en compression → classe 4 ; en flexion âme tendue (semelle comprimée) → classe 1
+    const P = E.prepare(T, 355);
+    check('Compression : âme en console c/t = 18,5 > 14ε → classe 4', P.cN.cls, 4);
+    check('Flexion M_y > 0 (semelle comprimée, extrémité d\'âme tendue) → classe 1', E.classify(T, 355, 0, 50e6, 0).cls, 1);
+    check('Flexion M_y < 0 (extrémité d\'âme comprimée) → classe 4 (21ε√k_σ dépassé ? sinon 3)', E.classify(T, 355, 0, -50e6, 0).cls >= 3 ? 1 : 0, 1);
+    check('Console : extrémité comprimée, ψ = 1, α = 1 → limites de compression', E.outstand(10, 1, 100, 100, 1).lim[2], 14);
+    // flexion-torsion : centre de cisaillement sur z → N = [(N_z + N_T) − √((N_z + N_T)² − 4β·N_z·N_T)]/(2β), β = 1 − z0²/i0²
+    const diag = { N: 50e3, My: [0, 0, 0, 0, 0], Mz: [0, 0, 0, 0, 0], Mymax: 0, Mzmax: 0, loadY: null, loadZ: null };
+    const stab = { L: 2000, bc: 'aa', Lcry: 2000, Lcrz: 2000, LLT: 2000, k: 1, kw: 1, zg: 0, C1: null, C2: null, restrained: false, sway: false };
+    const mb = E.memberCheck(T, P, 'S355', 1, diag, stab), tf_ = mb.tf, be = 1 - tf_.v0 ** 2 / tf_.i02, Nz = mb.z.Ncr, NT = tf_.NT;
+    check('Flexion-torsion (té) : formule fermée [kN]', tf_.Ncr / 1e3, ((Nz + NT) - Math.sqrt((Nz + NT) ** 2 - 4 * be * Nz * NT)) / (2 * be) / 1e3, 1e-6);
+    check('… courbes c / c (tableau 6.2, sections en T)', mb.y.curve === 'c' && mb.z.curve === 'c' ? 1 : 0, 1);
+    // déversement, moment uniforme (C1 = 1, C3 = 1) : M_cr = (π²EI_z/L²)·[√(I_w/I_z + L²GI_t/(π²EI_z) + z_j²) ± z_j]
+    const Es = 210000, L = 2000, a = Math.PI ** 2 * Es * T.Iz / L ** 2, rt = Math.sqrt(T.Iw / T.Iz + L * L * D.Gs * T.It / (Math.PI ** 2 * Es * T.Iz) + T.geo.zj ** 2);
+    const sT = ST.defaultState();
+    Object.assign(sT, { mode: 'direct', L: 2, pp: false }); sT.sec.kind = 'tee'; sT.sec.tee = { h, b, tw, tf }; sT.direct.My = [10, 10, 10];
+    sT.stab.link.LLT = true; sT.stab.zgMode = 'centre';
+    const lUp = E.compute(sT).env.worst.mem.lt;
+    check('Déversement, M > 0, semelle en haut comprimée : M_cr = a·(√… + z_j) [kN·m]', lUp.Mcr / 1e6, a * (rt + T.geo.zj) / 1e6, 1e-6);
+    sT.sec.tOri = 'down';
+    const rDn = E.compute(sT), lDn = rDn.env.worst.mem.lt;
+    check('… té renversé, âme comprimée : M_cr = a·(√… − z_j) [kN·m]', lDn.Mcr / 1e6, a * (rt - T.geo.zj) / 1e6, 1e-6);
+    check('… taux de déversement = M/M_b,Rd du cas âme comprimée', rDn.env.byCrit.LT.r, 10e6 / lDn.MbRd, 1e-9);
+    sT.sec.tOri = 'up'; sT.direct.My = [-10, 5, 10];
+    const lMix = E.compute(sT).env.worst.mem.lt;
+    check('Moments des deux signes : les deux cas évalués, C3 = 1 pour l\'âme comprimée', lMix.cases.length === 2 && lMix.cases.find((c) => !c.fc).C3 === 1 ? 1 : 0, 1);
+    check('C3 (semelle comprimée), ψ = 0 : 0,939 (ENV tableau F.1.1)', E.c3Auto(1, [10, 0, 5, 0, 0], null), 0.939, 1e-9);
   }
 
   // ------------------------------------------------------------------

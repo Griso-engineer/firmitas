@@ -45,7 +45,8 @@
     { id: 'HE (lourds)', re: /^HE \d+ ×/ }, { id: 'HL', re: /^HL / }, { id: 'HD', re: /^HD / },
     { id: 'UB', re: /^UB / }, { id: 'UC', re: /^UC / },
     { id: 'SHS (tube carré)', tube: 'shs' }, { id: 'RHS (tube rectangulaire)', tube: 'rhs' }, { id: 'CHS (tube rond)', tube: 'chs' },
-    { id: 'L (ailes égales)', angle: 'eq' }, { id: 'L (ailes inégales)', angle: 'uneq' }
+    { id: 'L (ailes égales)', angle: 'eq' }, { id: 'L (ailes inégales)', angle: 'uneq' },
+    { id: 'T (EN 10055)', tee: true }
   ];
   // Cornières EN 10056-1 (et dimensions courantes des catalogues) : [h, b, [t…], r1 (congé de pied)]
   const ANGLES = [
@@ -60,13 +61,17 @@
     [150, 90, [10, 11, 12, 15], 12], [150, 100, [10, 12, 14], 12], [200, 100, [10, 12, 14, 15, 16], 15], [200, 150, [12, 15], 15], [250, 90, [12, 14, 16], 15]
   ];
 
+  // Tés à ailes égales EN 10055 (Euronorme 55-80) : [h = b, s = t] ; congé r1 = t, arrondis r2 = r3 ≈ t/3, dépouilles 2 %
+  const TEES = [[20, 3], [25, 3.5], [30, 4], [35, 4.5], [40, 5], [45, 5.5], [50, 6], [60, 7], [70, 8], [80, 9], [90, 10], [100, 11], [120, 13], [140, 15]];
+
   const num = (n) => parseFloat((n.match(/[\d.]+/) || [0])[0]);
   const iRows = RAW.I.map((r) => (FIXED[r[0]] ? [r[0]].concat(FIXED[r[0]]) : r)).concat(ADDED);
   const addedNames = new Set(ADDED.map((r) => r[0]));
   const CATALOG = {};          // famille → [{name, make()}]
   FAMILIES.forEach((f) => {
     let list;
-    if (f.angle) list = ANGLES.filter(([h, b]) => (f.angle === 'eq') === (h === b)).flatMap(([h, b, ts, r1]) => ts.map((t) => { const s = G.angle(h, b, t, r1); return { name: s.name, make: () => G.angle(h, b, t, r1) }; }));
+    if (f.tee) list = TEES.map(([h, t]) => { const name = `T ${h} × ${h} × ${String(t).replace('.', ',')}`; return { name, make: () => G.tee(name, h, h, t, t, t, t / 3, t / 3, 'rolled', 0.02) }; });
+    else if (f.angle) list =ANGLES.filter(([h, b]) => (f.angle === 'eq') === (h === b)).flatMap(([h, b, ts, r1]) => ts.map((t) => { const s = G.angle(h, b, t, r1); return { name: s.name, make: () => G.angle(h, b, t, r1) }; }));
     else if (f.ipn) list = RAW.IPN.map((r) => ({ name: r[0], make: () => G.ipn(r) }));
     else if (f.tube === 'chs') list = RAW.CHS.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(([d, t]) => { const s = G.chs(d, t); return { name: s.name, make: (fab) => G.chs(d, t, fab) }; });
     else if (f.tube) list = RAW.RHS.filter(([h, b]) => (f.tube === 'shs') === (h === b)).sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2])
@@ -106,5 +111,5 @@
     { id: 'Qy', cas: 'Q', dir: 'y', label: 'Q — variables', sub: 'plan faible (F<sub>y</sub>)' }
   ];
 
-  window.FIRMITAS_DATA = { E: 210000, Gs: 80770, STEELS, fyOf, FAMILIES, ANGLES, CATALOG, findSection, ALPHA, BC, SLS_PRESETS, LOAD_ROWS, ADDED, FIXED };
+  window.FIRMITAS_DATA = { E: 210000, Gs: 80770, STEELS, fyOf, FAMILIES, ANGLES, TEES, CATALOG, findSection, ALPHA, BC, SLS_PRESETS, LOAD_ROWS, ADDED, FIXED };
 })();

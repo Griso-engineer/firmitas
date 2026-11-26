@@ -60,6 +60,20 @@
     const W = S.b * k, H = S.h * k, x0 = (size - W) / 2, y0 = (size - H) / 2, cx = size / 2, cy = size / 2;
     let shape;
     const st = 'fill="#d9dee6" stroke="#111" stroke-width="1.1"';
+    if (S.type === 'T') {
+      // semelle en haut (ou en bas si renversé) ; G et centre de cisaillement C marqués
+      const tf = Math.max(S.tf * k, 1), tw = Math.max(S.tw * k, 1), dn = !!S.geo.down;
+      const xl = cx - tw / 2, xr = cx + tw / 2;
+      const path = dn
+        ? `M${xl},${y0}h${tw}V${y0 + H - tf}H${x0 + W}v${tf}H${x0}v${-tf}H${xl}Z`
+        : `M${x0},${y0}h${W}v${tf}H${xr}V${y0 + H}h${-tw}V${y0 + tf}H${x0}Z`;
+      const gy = dn ? y0 + H - S.geo.zc * k : y0 + S.geo.zc * k, sy = dn ? y0 + H - tf / 2 : y0 + tf / 2;
+      return `<svg width="${size + 14}" height="${size}" viewBox="0 0 ${size + 14} ${size}" aria-hidden="true"><path d="${path}" ${st}/>
+        <line x1="${cx}" y1="${y0 - 8}" x2="${cx}" y2="${y0 + H + 8}" stroke="#111" stroke-width=".6" stroke-dasharray="4 2 1 2"/>
+        <line x1="${x0 - 8}" y1="${gy}" x2="${x0 + W + 8}" y2="${gy}" stroke="#111" stroke-width=".6" stroke-dasharray="4 2 1 2"/>
+        <circle cx="${cx}" cy="${gy}" r="1.8" fill="#111"/><circle cx="${cx}" cy="${sy}" r="2.2" fill="none" stroke="#c0392b" stroke-width="1"/>
+        <text x="${x0 + W + 10}" y="${gy + 4}">y</text><text x="${cx + 4}" y="${y0 + H + 14}">z</text></svg>`;
+    }
     if (S.type === 'L') {
       // talon en bas à gauche (aile h verticale, aile b horizontale) ; axes principaux u (fort) et v (faible) au centre de gravité
       const t = Math.max(S.t * k, 1), X = (y) => x0 + y * k, Y = (z) => y0 + H - z * k;
@@ -116,29 +130,33 @@
     return { p, it };
   }
   const famOptions = () => [
-    { group: 'Profilés en I', items: D.FAMILIES.filter((f) => !f.tube && !f.angle).map((f) => [f.id, f.id]) },
+    { group: 'Profilés en I', items: D.FAMILIES.filter((f) => !f.tube && !f.angle && !f.tee).map((f) => [f.id, f.id]) },
     { group: 'Tubes', items: D.FAMILIES.filter((f) => f.tube).map((f) => [f.id, f.id]) },
-    { group: 'Cornières', items: D.FAMILIES.filter((f) => f.angle).map((f) => [f.id, f.id]) }
+    { group: 'Cornières', items: D.FAMILIES.filter((f) => f.angle).map((f) => [f.id, f.id]) },
+    { group: 'Tés', items: D.FAMILIES.filter((f) => f.tee).map((f) => [f.id, f.id]) }
   ];
   const isTubeFam = (f) => { const x = D.FAMILIES.find((y) => y.id === f); return !!(x && x.tube); };
+  const isTeeFam = (f) => { const x = D.FAMILIES.find((y) => y.id === f); return !!(x && x.tee); };
+  const teeOri = () => field('Orientation', sel('sec.tOri', [['up', 'Semelle en haut (T)'], ['down', 'Semelle en bas (⊥)']]));
 
   function renderVerification(app) {
     recompute();
     const { p } = crumb();
     const s = state, c = s.sec;
-    const kindChips = [['cat', 'Catalogue'], ['prs', 'PRS (I soudé)'], ['tube', 'Tube sur mesure'], ['rect', 'Rectangle plein']]
+    const kindChips = [['cat', 'Catalogue'], ['prs', 'PRS (I soudé)'], ['tube', 'Tube sur mesure'], ['rect', 'Rectangle plein'], ['tee', 'T soudé sur mesure']]
       .map(([k, l]) => `<button type="button" class="chip${c.kind === k ? ' on' : ''}" data-act="kind" data-v="${k}">${l}</button>`).join('');
     const modeChips = [['charges', 'Charges sur la poutre'], ['direct', 'Sollicitations de calcul (modèle)']]
       .map(([k, l]) => `<button type="button" class="chip${s.mode === k ? ' on' : ''}" data-act="mode" data-v="${k}">${l}</button>`).join('');
     let secFields;
     if (c.kind === 'prs') secFields = `${field('h', inp('sec.prs.h'), 'mm')}${field('b', inp('sec.prs.b'), 'mm')}${field('t<sub>w</sub>', inp('sec.prs.tw'), 'mm')}${field('t<sub>f</sub>', inp('sec.prs.tf'), 'mm')}`;
+    else if (c.kind === 'tee') secFields = `${field('h', inp('sec.tee.h'), 'mm', 'Hauteur totale')}${field('b', inp('sec.tee.b'), 'mm', 'Largeur de semelle')}${field('t<sub>w</sub>', inp('sec.tee.tw'), 'mm', 'Âme')}${field('t<sub>f</sub>', inp('sec.tee.tf'), 'mm', 'Semelle')}${teeOri()}`;
     else if (c.kind === 'rect') secFields = `${field('h', inp('sec.rect.h'), 'mm', 'Hauteur, selon z (flexion M<sub>y</sub>)')}${field('b', inp('sec.rect.b'), 'mm', 'Épaisseur, selon y')}`;
     else if (c.kind === 'tube') secFields =`${field('Forme', sel('sec.tube.shape', [['rhs', 'Rectangulaire / carré'], ['chs', 'Rond']], { rerender: true }))}
       ${c.tube.shape === 'chs' ? field('d', inp('sec.tube.d'), 'mm') : field('h', inp('sec.tube.h'), 'mm') + field('b', inp('sec.tube.b'), 'mm')}${field('t', inp('sec.tube.t'), 'mm')}
       ${field('Fabrication', sel('sec.fab', [['hot', 'Fini à chaud (EN 10210)'], ['cold', 'Formé à froid (EN 10219)']]))}`;
     else secFields = `${field('Famille', sel('sec.fam', famOptions(), { rerender: true }))}
       ${field('Profil', sel('sec.name', (D.CATALOG[c.fam] || []).map((x) => [x.name, x.name + (x.added ? ' ＋' : '')])))}
-      ${isTubeFam(c.fam) ? field('Fabrication', sel('sec.fab', [['hot', 'Fini à chaud (EN 10210)'], ['cold', 'Formé à froid (EN 10219)']])) : ''}`;
+      ${isTubeFam(c.fam) ? field('Fabrication', sel('sec.fab', [['hot', 'Fini à chaud (EN 10210)'], ['cold', 'Formé à froid (EN 10219)']])) : ''}${isTeeFam(c.fam) ? teeOri() : ''}`;
 
     app.innerHTML = `<div class="page">
       <div class="actionbar">
@@ -198,7 +216,7 @@
             ${field('Point d\'application', sel('stab.zgMode', [['top', 'Semelle supérieure (déstabilisant)'], ['centre', 'Centre de cisaillement'], ['bottom', 'Semelle inférieure'], ['custom', 'z_g saisi']], { rerender: true }))}
             ${s.stab.zgMode === 'custom' ? field('z<sub>g</sub>', inp('stab.zg'), 'mm', '> 0 au-dessus du centre') : ''}
             ${field('C<sub>1</sub>, C<sub>2</sub>', sel('stab.C1mode', [['auto', 'Automatiques'], ['manual', 'Saisis']], { rerender: true }))}
-            ${s.stab.C1mode === 'manual' ? field('C<sub>1</sub>', inp('stab.C1')) + field('C<sub>2</sub>', inp('stab.C2')) : ''}
+            ${s.stab.C1mode === 'manual' ? field('C<sub>1</sub>', inp('stab.C1')) + field('C<sub>2</sub>', inp('stab.C2')) + (R.S && R.S.type === 'T' ? field('C<sub>3</sub>', inp('stab.C3'), '', 'Vide : automatique') : '') : ''}
           </div>
           <div style="margin-top:8px">${chk('stab.link.LLT', 'L<sub>LT</sub> auto', true)}</div>`}
           <p class="note" id="ltNote"></p>
@@ -290,13 +308,16 @@
           <div><span>I<sub>t</sub></span><b>${fmtG(S.It / 1e4, 2)} cm⁴</b></div><div><span>I<sub>w</sub></span><b>${S.Iw ? fmtG(S.Iw / 1e6, 0) + ' cm⁶' : '—'}</b></div>
           <div><span>A<sub>v,z</sub></span><b>${fmt(S.Avz / 100, 1)} cm²</b></div><div><span>i<sub>y</sub> / i<sub>z</sub></span><b>${fmt(S.iy / 10, 2)} / ${fmt(S.iz / 10, 2)} cm</b></div>
           <div><span>f<sub>y</sub> (t = ${fmtG(S.t, 1)} mm)</span><b>${R.fy} MPa</b></div><div><span>Courbes y / z</span><b>${R.curves.y} / ${R.curves.z}</b></div>
-        </div>`}${S.type === 'RECT' ? `<p class="note" style="margin-top:8px">Rectangle plein (fer plat) : classe 1, flambement courbe c sur les deux axes (tableau 6.2, sections pleines), déversement par la méthode générale (6.3.2.2, courbe d) avec M<sub>cr</sub> calculé depuis I<sub>z</sub> et I<sub>t</sub> = ${fmtG(S.It / 1e4, 2)} cm⁴ (I<sub>w</sub> négligé) et l'effet du point d'application z<sub>g</sub>. Barre libre entre ses maintiens : un raidisseur soudé sur une tôle relève de l'EN 1993-1-5 (voilement par torsion du raidisseur, § 9.2.1(8)).</p>` : ''}</div>` : '<p class="note warn">Dimensions invalides.</p>');
+        </div>`}${S.type === 'T' ? `<div class="kv" style="margin-top:6px">
+          <div><span>e (dessus de semelle → G)</span><b>${fmt(S.geo.zc / 10, 2)} cm</b></div><div><span>W<sub>el,y</sub> semelle / pointe d'âme</span><b>${fmtG(S.geo.Wtop / 1e3, 2)} / ${fmtG(S.geo.Wbot / 1e3, 2)} cm³</b></div>
+          <div><span>z<sub>0</sub> (G → centre de cisaillement)</span><b>${fmt(S.geo.z0 / 10, 2)} cm</b></div><div><span>z<sub>j</sub> (semelle comprimée)</span><b>${fmt(S.geo.zj / 10, 2)} cm</b></div>
+        </div><p class="note" style="margin-top:8px">Té ${S.geo.down ? 'renversé (semelle en bas)' : 'semelle en haut'}${S.fab === 'welded' ? ', soudé (sans congés)' : ', laminé EN 10055 (congé r<sub>1</sub> = t, dépouilles 2 %)'} : caractéristiques intégrées depuis la géométrie. Classification : semelle et âme en console (tableau 5.2, feuille 2), âme fléchie avec α plastique et k<sub>σ</sub>(ψ). Flambement courbe c (tableau 6.2), flexion-torsion (centre de cisaillement à la jonction âme–semelle, cercle rouge). Déversement : M<sub>cr</sub> de l'ENV 1993-1-1 annexe F avec le terme de monosymétrie C<sub>3</sub>·z<sub>j</sub>, pour chaque signe de moment — âme comprimée en général critique ; W<sub>el,y</sub> = minimum des deux fibres.</p>` : ''}${S.type === 'RECT' ?`<p class="note" style="margin-top:8px">Rectangle plein (fer plat) : classe 1, flambement courbe c sur les deux axes (tableau 6.2, sections pleines), déversement par la méthode générale (6.3.2.2, courbe d) avec M<sub>cr</sub> calculé depuis I<sub>z</sub> et I<sub>t</sub> = ${fmtG(S.It / 1e4, 2)} cm⁴ (I<sub>w</sub> négligé) et l'effet du point d'application z<sub>g</sub>. Barre libre entre ses maintiens : un raidisseur soudé sur une tôle relève de l'EN 1993-1-5 (voilement par torsion du raidisseur, § 9.2.1(8)).</p>` : ''}</div>` : '<p class="note warn">Dimensions invalides.</p>');
     }
     const ln = $('#ltNote');
     if (ln && R.env && R.env.worst) {
       const lt = R.env.worst.mem.lt;
       ln.innerHTML = lt.skip ? 'Déversement : ' + sub(lt.skip) + '.'
-        : `M<sub>cr</sub> = ${kNm(lt.Mcr)} kN·m (annexe F de l'ENV / NCCI SN003) · C<sub>1</sub> = ${fmt(lt.C1, 3)}${state.stab.C1mode === 'manual' ? '' : ' (forme du diagramme, entre maintiens d\'extrémité)'} · C<sub>2</sub>·z<sub>g</sub> = ${fmt(lt.C2, 3)} × ${fmtG(R.stab.zg, 1)} mm · λ̄<sub>LT</sub> = ${fmt(lt.lam, 3)} · χ<sub>LT</sub> = ${fmt(lt.chi, 3)} (courbe ${lt.curve}).`;
+        : `M<sub>cr</sub> = ${kNm(lt.Mcr)} kN·m (annexe F de l'ENV / NCCI SN003) · C<sub>1</sub> = ${fmt(lt.C1, 3)}${state.stab.C1mode === 'manual' ? '' : ' (forme du diagramme, entre maintiens d\'extrémité)'} · C<sub>2</sub>·z<sub>g</sub> = ${fmt(lt.C2, 3)} × ${fmtG(R.stab.zg, 1)} mm${lt.cases ? ` · C<sub>3</sub>·z<sub>j</sub> = ${fmt(lt.C3, 3)} × ${fmtG(lt.zj, 1)} mm (${lt.fc ? 'semelle' : 'âme'} comprimée)` : ''} · λ̄<sub>LT</sub> = ${fmt(lt.lam, 3)} · χ<sub>LT</sub> = ${fmt(lt.chi, 3)} (courbe ${lt.curve}).${lt.cases && lt.cases.length > 1 ? ` Autre signe : M<sub>cr</sub> = ${kNm(lt.cases.find((c) => c.fc !== lt.fc).Mcr)} kN·m (${lt.fc ? 'âme' : 'semelle'} comprimée).` : ''}`;
     }
     renderResults();
     const v = $('#verdict');
@@ -377,18 +398,19 @@
     if (!R.env || !R.env.worst) { app.innerHTML = `<div class="page">${blockHead('—', 'Détail', 'Aucun résultat.')}</div>`; return; }
     const c = R.env.worst, m = c.mem, s = c.sec, S = R.S, P = R.P;
     const line = (a, b) => `<tr><td>${a}</td><td class="num">${b}</td></tr>`;
-    const clRow = (n, w) => (w ? `<tr><td>${n}</td><td class="num">${fmt(w.ct, 2)}</td><td>${({ comp: 'comprimée', bend: 'fléchie', nm: 'fléchie et comprimée', out: 'en console', tube: 'tube', solid: 'section pleine', none: 'non comprimée' })[w.mode] || w.mode}</td><td class="num">${w.lim ? w.lim.map((x) => fmt(x, 1)).join(' / ') : '—'}</td><td class="num">${w.alpha != null ? fmt(w.alpha, 3) : '—'}</td><td class="num"><b>${w.cls}</b></td></tr>` : '');
+    const clRow = (n, w) => (w ? `<tr><td>${n}</td><td class="num">${fmt(w.ct, 2)}</td><td>${({ comp: 'comprimée', bend: 'fléchie', nm: 'fléchie et comprimée', out: 'en console', tipc: 'console fléchie, extrémité comprimée', tipt: 'console fléchie, extrémité tendue', tube: 'tube', solid: 'section pleine', none: 'non comprimée' })[w.mode] || w.mode}</td><td class="num">${w.lim ? w.lim.map((x) => fmt(x, 1)).join(' / ') : '—'}</td><td class="num">${w.alpha != null ? fmt(w.alpha, 3) : '—'}</td><td class="num"><b>${w.cls}</b></td></tr>` : '');
     app.innerHTML = `<div class="page">
       ${blockHead('—', 'Détail', `Calculs intermédiaires de l'élément courant « ${esc(state.name)} » — ${esc(S.name)} ${R.grade}, combinaison dimensionnante ${esc(c.id)} (${esc(c.label)}).`)}
       <div class="cols2">
         <div>
           <div class="sub-title" style="margin-top:0">Classification — tableau 5.2 (torseur de la barre)</div>
           <table class="tbl compact"><thead><tr><th>Paroi</th><th class="num">c/t</th><th>Sollicitation</th><th class="num">Limites cl. 1/2/3</th><th class="num">α</th><th class="num">Classe</th></tr></thead><tbody>
-            ${clRow(S.type === 'L' ? 'Cornière h/t (≤ 15ε)' : S.type === 'RECT' ? 'Rectangle plein (grand côté / petit côté)' : S.type === 'CHS' ? 'Tube d/t' : S.type === 'I' ? 'Âme' : 'Parois de hauteur h', m.cl.web)}${clRow(S.type === 'L' ? 'Cornière (b + h)/2t (≤ 11,5ε)' : S.type === 'I' ? 'Semelle' : 'Parois de largeur b', m.cl.flange)}
+            ${clRow(S.type === 'L' ? 'Cornière h/t (≤ 15ε)' : S.type === 'RECT' ? 'Rectangle plein (grand côté / petit côté)' : S.type === 'CHS' ? 'Tube d/t' : S.type === 'I' ? 'Âme' : S.type === 'T' ? 'Âme de té (console)' : 'Parois de hauteur h', m.cl.web)}${clRow(S.type === 'L' ? 'Cornière (b + h)/2t (≤ 11,5ε)' : S.type === 'I' || S.type === 'T' ? 'Semelle' : 'Parois de largeur b', m.cl.flange)}
           </tbody></table>
           ${S.type === 'L' ? `<p class="note">Cornières (tableau 5.2, feuille 3) : classe 3 si h/t ≤ 15ε et (b + h)/(2t) ≤ 11,5ε, sinon classe 4 ; résistance élastique dans tous les cas. Classe 4 : A<sub>eff</sub> avec les ailes en console (EN 1993-1-5, k<sub>σ</sub> = 0,43, c = aile − t)${P.ae ? ` = ${fmt(P.Aeff / 100, 2)} cm² (ρ<sub>h</sub> = ${fmt(P.ae.rw, 3)}, ρ<sub>b</sub> = ${fmt(P.ae.rf, 3)}) ; W<sub>el</sub> réduit par ρ<sub>min</sub> (approximation)` : ''}.</p>` : ''}
+          ${S.type === 'T' ? `<p class="note">Té (tableau 5.2, feuille 2) : semelle c = (b − t<sub>w</sub>)/2 − r, console comprimée 9ε / 10ε / 14ε ; âme c = h − t<sub>f</sub> − r, console fléchie : extrémité comprimée 9ε/α, 10ε/α ; extrémité tendue 9ε/(α√α), 10ε/(α√α) ; classe 3 : 21ε√k<sub>σ</sub> (EN 1993-1-5 tableau 4.2). α = part comprimée de l'âme en plastique, ψ = rapport des contraintes élastiques aux bords de l'âme.${P.ae ? ` Compression seule : A<sub>eff</sub> = ${fmt(P.Aeff / 100, 2)} cm² (ρ<sub>âme</sub> = ${fmt(P.ae.rw, 3)}, ρ<sub>semelle</sub> = ${fmt(P.ae.rf, 3)}).` : ''}</p>` : ''}
           ${S.type === 'RECT' ? `<p class="note">Section pleine : pas de paroi mince au sens du tableau 5.2, donc pas de voilement local — classe 1 (résistance plastique). Interaction N–M : M<sub>N</sub> = M<sub>pl</sub>·(1 − n²) (exact pour le rectangle) ; flexion déviée avec α = β = 1 (6.2.9.1(6), prudent). Cisaillement : A<sub>v</sub> = A (6.2.6(3) g).</p>` : ''}
-          <p class="note"${S.type === 'L' || S.type === 'RECT' ? ' hidden' : ''}>c<sub>âme</sub> = h − 2t<sub>f</sub> − 2r ; c<sub>semelle</sub> = (b − t<sub>w</sub>)/2 − r ; tubes : c = h − 3t (NF EN 1993-1-1 tableau 5.2). Pour l'âme en flexion composée : α = ½·(1 + N<sub>Ed</sub>/(c·t<sub>w</sub>·f<sub>y</sub>)), ψ = 2N<sub>Ed</sub>/(A·f<sub>y</sub>) − 1. Compression seule : classe ${P.cN.cls}${P.ae ? `, A<sub>eff</sub> = ${fmt(P.Aeff / 100, 2)} cm² (ρ<sub>âme</sub> = ${fmt(P.ae.rw, 3)}, ρ<sub>semelle</sub> = ${fmt(P.ae.rf, 3)})` : ''} ; flexion seule : classe ${P.cMy.cls}.</p>
+          <p class="note"${S.type === 'L' || S.type === 'RECT' || S.type === 'T' ? ' hidden' : ''}>c<sub>âme</sub> = h − 2t<sub>f</sub> − 2r ; c<sub>semelle</sub> = (b − t<sub>w</sub>)/2 − r ; tubes : c = h − 3t (NF EN 1993-1-1 tableau 5.2). Pour l'âme en flexion composée : α = ½·(1 + N<sub>Ed</sub>/(c·t<sub>w</sub>·f<sub>y</sub>)), ψ = 2N<sub>Ed</sub>/(A·f<sub>y</sub>) − 1. Compression seule : classe ${P.cN.cls}${P.ae ? `, A<sub>eff</sub> = ${fmt(P.Aeff / 100, 2)} cm² (ρ<sub>âme</sub> = ${fmt(P.ae.rw, 3)}, ρ<sub>semelle</sub> = ${fmt(P.ae.rf, 3)})` : ''} ; flexion seule : classe ${P.cMy.cls}.</p>
           <div class="sub-title">Résistance des sections — § 6.2 (x = ${fmt(c.secSt.x, 2)} m)</div>
           <table class="tbl compact"><tbody>
             ${line('N<sub>pl,Rd</sub> = A·f<sub>y</sub>/γ<sub>M0</sub>', kN(s.Npl) + ' kN')}
@@ -403,15 +425,16 @@
         </div>
         <div>
           <div class="sub-title" style="margin-top:0">Flambement — § 6.3.1</div>
-          <table class="tbl compact"><thead><tr><th></th><th class="num">${m.tf ? 'axe u (y)' : 'axe y'}</th><th class="num">${m.tf ? 'axe v (z)' : 'axe z'}</th>${m.tf ? '<th class="num">flexion-torsion</th>' : ''}</tr></thead><tbody>
+          <table class="tbl compact"><thead><tr><th></th><th class="num">${m.tf && S.type === 'L' ? 'axe u (y)' : 'axe y'}</th><th class="num">${m.tf && S.type === 'L' ? 'axe v (z)' : 'axe z'}</th>${m.tf ? '<th class="num">flexion-torsion</th>' : ''}</tr></thead><tbody>
             ${[['L<sub>cr</sub> [m]', (a) => fmt(a.Lcr / 1000, 2)], ['N<sub>cr</sub> [kN]', (a) => kN(a.Ncr)]].concat(m.bb ? [['λ̄ (sans BB.1.2)', (a) => (a.lam0 != null ? fmt(a.lam0, 3) : '—')]] : []).concat([[m.bb ? 'λ̄<sub>eff</sub> (BB.1.2)' : 'λ̄', (a) => fmt(a.lam, 3)], ['courbe / α', (a) => a.curve + ' / ' + fmt(a.alpha, 2)], ['Φ', (a) => fmt(a.phi, 3)], ['χ', (a) => fmt(a.chi, 3)], ['N<sub>b,Rd</sub> [kN]', (a) => kN(a.NbRd)]])
               .map(([l, f]) => `<tr><td>${l}</td><td class="num">${f(m.y)}</td><td class="num">${f(m.z)}</td>${m.tf ? `<td class="num">${l.startsWith('λ̄ (sans') ? '—' : f(m.tf)}</td>` : ''}</tr>`).join('')}
           </tbody></table>
-          ${m.tf ? `<p class="note">Flexion-torsion (6.3.1.4) : N<sub>cr,TF</sub> = plus petite racine de (N − N<sub>u</sub>)(N − N<sub>v</sub>)(N − N<sub>T</sub>) − N²(N − N<sub>u</sub>)·v<sub>0</sub>²/i<sub>0</sub>² − N²(N − N<sub>v</sub>)·u<sub>0</sub>²/i<sub>0</sub>² = 0, avec N<sub>T</sub> = (G·I<sub>t</sub> + π²E·I<sub>w</sub>/L<sub>T</sub>²)/i<sub>0</sub>² = ${kN(m.tf.NT)} kN, centre de cisaillement au talon (u<sub>0</sub> = ${fmt(m.tf.u0, 1)} mm, v<sub>0</sub> = ${fmt(m.tf.v0, 1)} mm), i<sub>0</sub> = ${fmt(Math.sqrt(m.tf.i02), 1)} mm, L<sub>T</sub> = L<sub>cr,z</sub> ; courbe b. ${m.tf.gov ? '<b>Mode dimensionnant</b> : χ<sub>TF</sub> remplace χ<sub>z</sub> dans N<sub>b,Rd</sub> et dans l’interaction (6.62).' : m.bb ? 'Non cumulé avec l’annexe BB.1.2, qui couvre le flambement de la cornière de treillis.' : 'Moins critique que le flambement par flexion : pour information.'}${m.bb ? ' BB.1.2 : élancements effectifs pour une cornière de treillis attachée par une aile (au moins deux boulons ou soudée) ; l\'excentricité de l\'attache n\'a alors pas à être prise en compte en flambement.' : ''}</p>` : ''}
+          ${m.tf ? `<p class="note">Flexion-torsion (6.3.1.4) : N<sub>cr,TF</sub> = plus petite racine de (N − N<sub>u</sub>)(N − N<sub>v</sub>)(N − N<sub>T</sub>) − N²(N − N<sub>u</sub>)·v<sub>0</sub>²/i<sub>0</sub>² − N²(N − N<sub>v</sub>)·u<sub>0</sub>²/i<sub>0</sub>² = 0, avec N<sub>T</sub> = (G·I<sub>t</sub> + π²E·I<sub>w</sub>/L<sub>T</sub>²)/i<sub>0</sub>² = ${kN(m.tf.NT)} kN, centre de cisaillement ${S.type === 'T' ? 'à la jonction âme–semelle' : 'au talon'} (u<sub>0</sub> = ${fmt(m.tf.u0, 1)} mm, v<sub>0</sub> = ${fmt(m.tf.v0, 1)} mm), i<sub>0</sub> = ${fmt(Math.sqrt(m.tf.i02), 1)} mm, L<sub>T</sub> = L<sub>cr,z</sub> ; courbe ${m.tf.curve}.${S.type === 'T' ? ' Té : u<sub>0</sub> = 0, couplage flexion autour de z – torsion (N<sub>u</sub> ≡ N<sub>y</sub>, N<sub>v</sub> ≡ N<sub>z</sub>).' : ''} ${m.tf.gov ? '<b>Mode dimensionnant</b> : χ<sub>TF</sub> remplace χ<sub>z</sub> dans N<sub>b,Rd</sub> et dans l’interaction (6.62).' : m.bb ? 'Non cumulé avec l’annexe BB.1.2, qui couvre le flambement de la cornière de treillis.' : 'Moins critique que le flambement par flexion : pour information.'}${m.bb ? ' BB.1.2 : élancements effectifs pour une cornière de treillis attachée par une aile (au moins deux boulons ou soudée) ; l\'excentricité de l\'attache n\'a alors pas à être prise en compte en flambement.' : ''}</p>` : ''}
           <div class="sub-title">Déversement — § 6.3.2</div>
           <table class="tbl compact"><tbody>
             ${m.lt.skip ? line('—', sub(m.lt.skip)) : `${line('L<sub>LT</sub> ; k ; k<sub>w</sub>', `${fmt(m.lt.L / 1000, 2)} m ; ${fmtG(m.lt.k, 2)} ; ${fmtG(m.lt.kw, 2)}`)}
             ${line('C<sub>1</sub> ; C<sub>2</sub> ; z<sub>g</sub>', `${fmt(m.lt.C1, 3)} ; ${fmt(m.lt.C2, 3)} ; ${fmtG(m.lt.zg, 1)} mm`)}
+            ${m.lt.cases ? line('C<sub>3</sub> ; z<sub>j</sub> (té, ENV annexe F)', `${fmt(m.lt.C3, 3)} ; ${fmtG(m.lt.zj, 1)} mm — ${m.lt.fc ? 'semelle' : 'âme'} comprimée${m.lt.cases.length > 1 ? ` (autre signe : M<sub>cr</sub> = ${kNm(m.lt.cases.find((c) => c.fc !== m.lt.fc).Mcr)} kN·m)` : ''}`) : ''}
             ${line('M<sub>cr</sub>', kNm(m.lt.Mcr) + ' kN·m')}
             ${line('λ̄<sub>LT</sub> = √(W<sub>y</sub>·f<sub>y</sub>/M<sub>cr</sub>)', fmt(m.lt.lam, 3))}
             ${line('courbe (tableau 6.4) / α<sub>LT</sub>', m.lt.curve + ' / ' + fmt(m.lt.alpha, 2))}

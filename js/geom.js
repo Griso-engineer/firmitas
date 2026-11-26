@@ -101,6 +101,99 @@
     });
   }
 
+  // ---------- té (EN 10055 laminé, ou soudé sur mesure) ----------
+  /* Semelle b × t_f en haut, âme t_w jusqu'à h ; congé de pied r1, arrondis d'extrémité r2 (semelle) et r3 (âme) ;
+     dépouilles des parois négligées. Caractéristiques intégrées par bandes horizontales (largeur w(s), s depuis le dessus
+     de la semelle) : chaque bande est centrée sur l'axe de symétrie z, ce qui donne aussi I_z et W_pl,z exactement.
+     Centre de cisaillement à la jonction des feuillets moyens (s = t_f/2). z_j (ENV 1993-1-1 annexe F) :
+     z_j = z_s − 0,5·∫(y² + z²)·z·dA / I_y, z compté positivement vers la semelle (z_j > 0 : semelle comprimée).
+     I_t : El Darwish & Johnston (té, nœud de congé D) ; I_w = b³t_f³/144 + t_w³(h − t_f/2)³/36. */
+  function tee(name, h, b, tw, tf, r1, r2, r3, fab, tp) {
+    r1 = r1 || 0; r2 = r2 || 0; r3 = r3 || 0; tp = tp || 0;
+    /* dépouilles tp (2 % pour EN 10055) : dessous de semelle et faces d'âme inclinés ; t_f mesuré à b/4 de l'axe,
+       t_w à mi-hauteur de l'âme (approximation de la mesure normalisée). */
+    const n = 2000, ds = h / n, sw = tf + (h - tf) / 2;
+    const tfAt = (x) => tf + tp * (b / 4 - x);                                // épaisseur de semelle à la distance x de l'axe
+    const twAt = (s) => Math.max(0.2 * tw, tw + 2 * tp * (sw - s));          // épaisseur d'âme à la profondeur s
+    const tfw = tfAt(tw / 2), tfe = tfAt(b / 2);                              // à la face d'âme et à l'extrémité
+    const width = (s) => {
+      // semelle : matière pour |x| ≤ X(s), X tel que tfAt(X) = s
+      let wf = 0;
+      if (s <= tfe) wf = b; else if (s < tfw) wf = 2 * (tp > 0 ? b / 4 + (tf - s) / tp : b / 2);
+      if (r2 > 0 && wf >= b) { const d = s - (tfe - r2); if (d > 0) wf = b - 2 * (r2 - Math.sqrt(Math.max(0, r2 * r2 - d * d))); }
+      let ww = twAt(s);
+      if (r1 > 0 && s < tfw + r1) { const d = tfw + r1 - s; ww += 2 * (r1 - Math.sqrt(Math.max(0, r1 * r1 - d * d))); }
+      if (r3 > 0 && s > h - r3) { const d = s - (h - r3); ww -= 2 * (r3 - Math.sqrt(Math.max(0, r3 * r3 - d * d))); }
+      return Math.max(wf, ww);
+    };
+    const ss = new Float64Array(n), ws = new Float64Array(n);
+    let A = 0, Sm = 0;
+    for (let i = 0; i < n; i++) { const s = (i + 0.5) * ds, w = width(s); ss[i] = s; ws[i] = w; A += w * ds; Sm += w * s * ds; }
+    const zc = Sm / A;                                   // centre de gravité depuis le dessus de la semelle
+    let Iy = 0, Iz = 0, Wplz = 0, K = 0;
+    for (let i = 0; i < n; i++) {
+      const w = ws[i], z = zc - ss[i];                   // z > 0 vers la semelle
+      Iy += w * (z * z + ds * ds / 12) * ds; Iz += w * w * w / 12 * ds; Wplz += w * w / 4 * ds;
+      K += z * (w * w * w / 12 + z * z * w) * ds;
+    }
+    // axe neutre plastique (aires égales) et W_pl,y
+    let acc = 0, sp = 0;
+    for (let i = 0; i < n; i++) { if (acc + ws[i] * ds >= A / 2) { sp = ss[i] - ds / 2 + (A / 2 - acc) / ws[i]; break; } acc += ws[i] * ds; }
+    let Wply = 0;
+    for (let i = 0; i < n; i++) Wply += ws[i] * Math.abs(ss[i] - sp) * ds;
+    const z0 = zc - tf / 2, zj = z0 - 0.5 * K / Iy;
+    const tmin = Math.min(tw, tf), tmax = Math.max(tw, tf);
+    const Dn = (Math.pow(tf + r1, 2) + tw * (r1 + tw / 4)) / (2 * r1 + tf);
+    const It = (b - 0.63 * tf) * tf ** 3 / 3 + ((h - tf) * tw ** 3 / 3 - 0.105 * tw ** 4) + 0.15 * tmin / tmax * Dn ** 4;
+    const Iw = b ** 3 * tf ** 3 / 144 + tw ** 3 * Math.pow(h - tf / 2, 3) / 36;
+    const Avz = fab === 'welded' ? tw * (h - tf / 2) : A - b * tf + (tw + 2 * r1) * tf / 2;     // 6.2.6(3) e)
+    /* moments plastiques réduits par N (rapport n = N/N_pl) : W_N tel que M_N = W_N·f_y.
+       Axe y : compression côté semelle ou côté âme, on retient le plus faible. Axe z : coupure verticale (bissection). */
+    const cache = {};
+    const mnY = (nn) => {
+      const Ac = A * (1 + nn) / 2;
+      const one = (fromTop) => {
+        let a = 0, M = 0, cut = fromTop ? 0 : h;
+        const idx = fromTop ? (i) => i : (i) => n - 1 - i;
+        for (let k = 0; k < n; k++) { const i = idx(k); if (a + ws[i] * ds >= Ac) { const f = (Ac - a) / ws[i]; cut = fromTop ? ss[i] - ds / 2 + f : ss[i] + ds / 2 - f; break; } a += ws[i] * ds; }
+        for (let i = 0; i < n; i++) {
+          const s0 = ss[i] - ds / 2, s1 = ss[i] + ds / 2, w = ws[i];
+          const inC = fromTop ? Math.max(0, Math.min(s1, cut) - s0) : Math.max(0, s1 - Math.max(s0, cut));
+          const zmid = zc - ss[i];
+          M += w * zmid * (fromTop ? 1 : -1) * (2 * inC - ds);
+        }
+        return Math.abs(M);
+      };
+      return Math.min(one(true), one(false));
+    };
+    const mnZ = (nn) => {
+      const Ac = A * (1 + nn) / 2;
+      const comp = (yN) => { let a = 0; for (let i = 0; i < n; i++) { const h2 = ws[i] / 2; a += Math.max(0, h2 - Math.max(yN, -h2)) * ds; } return a; };
+      let lo = -b / 2, hi = b / 2;
+      for (let k = 0; k < 50; k++) { const mid = (lo + hi) / 2; if (comp(mid) > Ac) lo = mid; else hi = mid; }
+      const yN = (lo + hi) / 2;
+      let M = 0;
+      for (let i = 0; i < n; i++) {
+        const h2 = ws[i] / 2, c = Math.max(-h2, Math.min(h2, yN));
+        M += ((h2 * h2 - c * c) / 2 - (c * c - h2 * h2) / 2) * ds;
+      }
+      return Math.abs(M);
+    };
+    const mn = (axis, nn) => {
+      nn = Math.max(0, Math.min(1, nn));
+      if (nn >= 1) return 0;
+      const key = axis + Math.round(nn * 200);
+      if (cache[key] == null) cache[key] = axis === 'y' ? mnY(Math.round(nn * 200) / 200) : mnZ(Math.round(nn * 200) / 200);
+      return cache[key];
+    };
+    return finish({
+      type: 'T', fab: fab || 'rolled', name, h, b, tw, tf, r: r1, t: Math.max(tw, tf),
+      A, Iy, Iz, Wely: Iy / Math.max(zc, h - zc), Welz: 2 * Iz / b, Wply, Wplz, It, Iw,
+      Avz, Avy: b * tf, hw: h - tf, cw: h - tf - r1, cf: (b - tw) / 2 - r1, mn,
+      geo: { zc, z0, zj, u0: 0, v0: z0, down: false, Wtop: Iy / zc, Wbot: Iy / (h - zc) }
+    });
+  }
+
   // ---------- rectangle plein (plat, fer plat, raidisseur) ----------
   /* h selon z (plan de M_y), b selon y. I_t de Saint-Venant (Roark, tableau 10.7) avec a = grand côté, c = petit côté :
      I_t = a·c³·[1/3 − 0,21·(c/a)·(1 − (c/a)⁴/12)] ; I_w négligé (= 0, prudent). A_v = A (6.2.6(3) g). */
@@ -167,5 +260,5 @@
     });
   }
 
-  window.FirmitasGeom = { iSection, ipn, rhs, chs, angle, rect, RHO };
+  window.FirmitasGeom = { iSection, ipn, rhs, chs, angle, rect, tee, RHO };
 })();
